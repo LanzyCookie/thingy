@@ -25,7 +25,7 @@ local RANK_NAMES = {
 }
 
 local AUTO_WHITELIST = {
-    --["Username"] = 4,
+    ["xXRblxGamerRblxXx"] = 4,
 }
 
 local playerRanks = {}
