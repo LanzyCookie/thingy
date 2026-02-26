@@ -1,7 +1,3 @@
--- CRUMBS ADMIN - SINGLE SCRIPT (Works in Console or Executor)
--- Only works for User ID: 1027223614
-
--- Detect if running on server or client
 local isServer = not game:GetService("RunService"):IsClient()
 local isStudio = game:GetService("RunService"):IsStudio()
 
@@ -257,7 +253,7 @@ if player.UserId == OWNER_ID then
         end
     end)
     
-    -- Hint label
+    -- Hint label (only for owner)
     local hintLabel = Instance.new("TextLabel")
     hintLabel.Size = UDim2.new(0, 280, 0, 20)
     hintLabel.Position = UDim2.new(0, 10, 0, 10)
@@ -1528,9 +1524,13 @@ local function onPlayerAdded(player)
         end
     end
     
-    -- Welcome message for owner
+    -- Welcome message for ALL players
+    notifyAll("Crumbs Admin", "Crumbs Admin has run!!", 4)
+    
+    -- Only owner gets the "type ,cmds" message
     if isOwner(player) then
-        notify(player, "Crumbs Admin", "Welcome, Owner. " .. PREFIX .. "cmds for help.", 5)
+        task.wait(1) -- Small delay so it appears after the first notification
+        notify(player, "Crumbs Admin", "Type ,cmds to get started.", 5)
     end
 end
 
