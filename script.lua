@@ -1,86 +1,91 @@
--- Crumbs Admin - Universal Version (Works in Console or ServerScriptService)
--- Combines server-side functionality with the enhanced GUI from your reference
+-- Crumbs Admin - FULLY SERVER-SIDE VERSION
+-- Run this in ServerScriptService ONLY
+-- All players will see GUIs and notifications
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local ServerScriptService = game:GetService("ServerScriptService")
+local RunService = game:GetService("RunService")
 local TeleportService = game:GetService("TeleportService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local TextChatService = game:GetService("TextChatService")
-local CoreGui = game:GetService("CoreGui")
-local StarterGui = game:GetService("StarterGui")
 
--- Global storage for persistence
-_G.CrumbsAdmin = _G.CrumbsAdmin or {}
-local admin = _G.CrumbsAdmin
+-- Create RemoteEvents for client communication
+local adminFolder = Instance.new("Folder")
+adminFolder.Name = "CrumbsAdmin"
+adminFolder.Parent = ReplicatedStorage
 
--- Configuration
-admin.config = admin.config or {
-    prefix = ",",
-    colors = {
-        CHOCOLATE = Color3.fromRGB(74, 49, 28),
-        MILK_CHOCOLATE = Color3.fromRGB(111, 78, 55),
-        LIGHT_CHOCOLATE = Color3.fromRGB(139, 90, 43),
-        COOKIE_DOUGH = Color3.fromRGB(210, 180, 140),
-        WHITE = Color3.fromRGB(255, 255, 255),
-        OFF_WHITE = Color3.fromRGB(240, 240, 240)
-    }
+local commandRemote = Instance.new("RemoteEvent")
+commandRemote.Name = "CommandRemote"
+commandRemote.Parent = adminFolder
+
+local notificationRemote = Instance.new("RemoteEvent")
+notificationRemote.Name = "NotificationRemote"
+notificationRemote.Parent = adminFolder
+
+local dashboardRemote = Instance.new("RemoteEvent")
+dashboardRemote.Name = "DashboardRemote"
+dashboardRemote.Parent = adminFolder
+
+local guiRemote = Instance.new("RemoteEvent")
+guiRemote.Name = "GUIRemote"
+guiRemote.Parent = adminFolder
+
+-- Color definitions (will be sent to clients)
+local COLORS = {
+    CHOCOLATE = {74, 49, 28},
+    MILK_CHOCOLATE = {111, 78, 55},
+    LIGHT_CHOCOLATE = {139, 90, 43},
+    COOKIE_DOUGH = {210, 180, 140},
+    WHITE = {255, 255, 255},
+    OFF_WHITE = {240, 240, 240}
 }
 
--- Data storage
-admin.ranks = admin.ranks or {}
-admin.tempRanks = admin.tempRanks or {}
-admin.muted = admin.muted or {}
-admin.frozen = admin.frozen or {}
-admin.invisible = admin.invisible or {}
-admin.loopKill = admin.loopKill or {}
-admin.loopPunish = admin.loopPunish or {}
-admin.savedLocations = admin.savedLocations or {}
-admin.antiCrash = admin.antiCrash or {}
-admin.notificationStack = admin.notificationStack or {}
-admin.currentDashboard = nil
+-- Configuration
+local PREFIX = ","
+local RANKS = {
+    Customer = 1,
+    Cashier = 2,
+    Baker = 3,
+    Manager = 4
+}
 
--- Rank definitions
-admin.rankNames = {
+local RANK_NAMES = {
     [0] = "User",
     [1] = "Customer",
-    [2] = "Cashier", 
+    [2] = "Cashier",
     [3] = "Baker",
     [4] = "Manager"
 }
 
--- Auto-whitelist (modify as needed)
-admin.autoWhitelist = admin.autoWhitelist or {
-    ["xXRblxGamerRblxXx"] = 4
+-- Data storage (server-side only)
+local AUTO_WHITELIST = {
+    ["xXRblxGamerRblxXx"] = 4  -- Add usernames here for auto-rank
 }
 
--- Colors for GUI
-local CHOCOLATE = admin.config.colors.CHOCOLATE
-local MILK_CHOCOLATE = admin.config.colors.MILK_CHOCOLATE
-local LIGHT_CHOCOLATE = admin.config.colors.LIGHT_CHOCOLATE
-local COOKIE_DOUGH = admin.config.colors.COOKIE_DOUGH
-local WHITE = admin.config.colors.WHITE
-local OFF_WHITE = admin.config.colors.OFF_WHITE
+local playerRanks = {}
+local tempRanks = {}
+local activePunishments = {}
+local activeLoopKills = {}
+local bannedPlayers = {}
+local mutedPlayers = {}
+local godModePlayers = {}
+local flyModePlayers = {}
+local savedLocations = {}
+local adminLogs = {}
 
 -- Helper Functions
-local function getRank(player)
-    local userId = player.UserId
-    if admin.tempRanks[userId] then return admin.tempRanks[userId] end
-    if admin.ranks[userId] then return admin.ranks[userId] end
-    if admin.autoWhitelist[player.Name] then return admin.autoWhitelist[player.Name] end
+local function getPlayerRank(player)
+    if tempRanks[player.UserId] then
+        return tempRanks[player.UserId]
+    end
+    if playerRanks[player.UserId] then
+        return playerRanks[player.UserId]
+    end
+    if AUTO_WHITELIST[player.Name] then
+        return AUTO_WHITELIST[player.Name]
+    end
     return 0
-end
-
-local function getPlayerHead(player)
-    if not player or not player.Character then return nil end
-    return player.Character:FindFirstChild("Head") or player.Character:FindFirstChild("HumanoidRootPart")
-end
-
-local function getPlayerHumanoid(player)
-    if not player or not player.Character then return nil end
-    return player.Character:FindFirstChildOfClass("Humanoid")
 end
 
 local function getPlayerParts(player)
@@ -94,563 +99,1841 @@ local function getPlayerParts(player)
     return parts
 end
 
-local function getGuiParent()
-    -- Try different GUI parents for maximum compatibility
-    local success, result = pcall(function()
-        -- Try CoreGui first (console/exploit)
-        if CoreGui then
-            return CoreGui
-        end
-    end)
-    if success and result then return result end
-    
-    -- Fallback to PlayerGui
-    local player = Players.LocalPlayer
-    if player then
-        return player:FindFirstChild("PlayerGui") or player:WaitForChild("PlayerGui")
-    end
-    
-    -- Ultimate fallback
-    return Instance.new("ScreenGui")
+local function getPlayerHead(player)
+    if not player or not player.Character then return nil end
+    return player.Character:FindFirstChild("Head") or player.Character:FindFirstChild("HumanoidRootPart")
 end
 
--- Enhanced Notification System (from your reference)
-local notificationCooldown = {}
+local function getPlayerHumanoid(player)
+    if not player or not player.Character then return nil end
+    return player.Character:FindFirstChildOfClass("Humanoid")
+end
 
-local function notify(plr, title, message, duration)
-    if not plr then return end
-    
-    local key = title .. message
-    if notificationCooldown[key] and tick() - notificationCooldown[key] < 1 then
-        return
-    end
-    notificationCooldown[key] = tick()
-    
-    coroutine.wrap(function()
-        local PlayerGui = plr:FindFirstChild("PlayerGui")
-        if not PlayerGui then return end
-        
-        duration = duration or 4
-        
-        -- Calculate text size for dynamic height
-        local TextService = game:GetService("TextService")
-        local frameWidth = 280
-        local messagePadding = 20
-        local textWidth = frameWidth - messagePadding
-        
-        local textSize = TextService:GetTextSize(
-            message or "",
-            12,
-            Enum.Font.Gotham,
-            Vector2.new(textWidth, 9999)
-        )
-        
-        local titleAreaHeight = 38
-        local verticalPadding = 10
-        local dynamicHeight = math.max(titleAreaHeight + textSize.Y + verticalPadding, 72)
-        
-        -- Clean up dead notifications
-        for i = #admin.notificationStack, 1, -1 do
-            if not admin.notificationStack[i] or not admin.notificationStack[i].gui or not admin.notificationStack[i].gui.Parent then
-                table.remove(admin.notificationStack, i)
-            end
-        end
-
-        -- Calculate position
-        local yOffset = 10
-        for _, entry in ipairs(admin.notificationStack) do
-            yOffset = yOffset + entry.height + 6
-        end
-        
-        -- Create notification GUI
-        local ScreenGui = Instance.new("ScreenGui")
-        ScreenGui.Name = "CrumbsNotification_" .. tick()
-        ScreenGui.ResetOnSpawn = false
-        ScreenGui.Parent = PlayerGui
-        ScreenGui.IgnoreGuiInset = true
-        ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-        
-        local NotifFrame = Instance.new("Frame")
-        NotifFrame.Name = "NotificationFrame"
-        NotifFrame.Size = UDim2.new(0, frameWidth, 0, dynamicHeight)
-        NotifFrame.Position = UDim2.new(1, -290, 1, -(yOffset + dynamicHeight))
-        NotifFrame.BackgroundColor3 = CHOCOLATE
-        NotifFrame.BackgroundTransparency = 1
-        NotifFrame.BorderSizePixel = 0
-        NotifFrame.Parent = ScreenGui
-        
-        local Corner = Instance.new("UICorner")
-        Corner.CornerRadius = UDim.new(0, 15)
-        Corner.Parent = NotifFrame
-        
-        local TitleLabel = Instance.new("TextLabel")
-        TitleLabel.Name = "Title"
-        TitleLabel.Text = title or "Crumbs Admin"
-        TitleLabel.Size = UDim2.new(1, -45, 0, 18)
-        TitleLabel.Position = UDim2.new(0, 10, 0, 6)
-        TitleLabel.TextColor3 = COOKIE_DOUGH
-        TitleLabel.TextTransparency = 1
-        TitleLabel.BackgroundTransparency = 1
-        TitleLabel.Font = Enum.Font.GothamBold
-        TitleLabel.TextSize = 13
-        TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-        TitleLabel.TextYAlignment = Enum.TextYAlignment.Top
-        TitleLabel.Parent = NotifFrame
-        
-        local WhiteLine = Instance.new("Frame")
-        WhiteLine.Name = "WhiteLine"
-        WhiteLine.Size = UDim2.new(1, -18, 0, 1)
-        WhiteLine.Position = UDim2.new(0, 9, 0, 27)
-        WhiteLine.BackgroundColor3 = MILK_CHOCOLATE
-        WhiteLine.BackgroundTransparency = 1
-        WhiteLine.BorderSizePixel = 0
-        WhiteLine.Parent = NotifFrame
-        
-        local CloseButton = Instance.new("TextButton")
-        CloseButton.Name = "CloseButton"
-        CloseButton.Size = UDim2.new(0, 24, 0, 24)
-        CloseButton.Position = UDim2.new(1, -30, 0, 5)
-        CloseButton.Text = "X"
-        CloseButton.TextColor3 = COOKIE_DOUGH
-        CloseButton.TextTransparency = 1
-        CloseButton.BackgroundTransparency = 1
-        CloseButton.BorderSizePixel = 0
-        CloseButton.Font = Enum.Font.GothamBold
-        CloseButton.TextSize = 15
-        CloseButton.Parent = NotifFrame
-        
-        local MessageLabel = Instance.new("TextLabel")
-        MessageLabel.Name = "Message"
-        MessageLabel.Text = message or ""
-        MessageLabel.Size = UDim2.new(1, -20, 1, -38)
-        MessageLabel.Position = UDim2.new(0, 10, 0, 32)
-        MessageLabel.TextColor3 = OFF_WHITE
-        MessageLabel.TextTransparency = 1
-        MessageLabel.BackgroundTransparency = 1
-        MessageLabel.Font = Enum.Font.Gotham
-        MessageLabel.TextSize = 12
-        MessageLabel.TextXAlignment = Enum.TextXAlignment.Left
-        MessageLabel.TextYAlignment = Enum.TextYAlignment.Top
-        MessageLabel.TextWrapped = true
-        MessageLabel.Parent = NotifFrame
-        
-        local stackEntry = {
-            gui = ScreenGui,
-            frame = NotifFrame,
-            height = dynamicHeight,
-            yOffset = yOffset
-        }
-        table.insert(admin.notificationStack, stackEntry)
-        
-        local closed = false
-        
-        local function restack()
-            local runningOffset = 10
-            for _, entry in ipairs(admin.notificationStack) do
-                if entry.gui and entry.gui.Parent and entry.frame and entry.frame.Parent then
-                    local targetY = -(runningOffset + entry.height)
-                    TweenService:Create(entry.frame, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                        Position = UDim2.new(1, -290, 1, targetY)
-                    }):Play()
-                    entry.yOffset = runningOffset
-                    runningOffset = runningOffset + entry.height + 6
-                end
-            end
-        end
-        
-        local function closeNotif()
-            if closed then return end
-            closed = true
-            
-            for i, entry in ipairs(admin.notificationStack) do
-                if entry.gui == ScreenGui then
-                    table.remove(admin.notificationStack, i)
-                    break
-                end
-            end
-            
-            local fadeOut1 = TweenService:Create(NotifFrame, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {BackgroundTransparency = 1})
-            local fadeOut2 = TweenService:Create(TitleLabel, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {TextTransparency = 1})
-            local fadeOut3 = TweenService:Create(WhiteLine, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {BackgroundTransparency = 1})
-            local fadeOut4 = TweenService:Create(CloseButton, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {TextTransparency = 1})
-            local fadeOut5 = TweenService:Create(MessageLabel, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {TextTransparency = 1})
-            
-            fadeOut1:Play()
-            fadeOut2:Play()
-            fadeOut3:Play()
-            fadeOut4:Play()
-            fadeOut5:Play()
-            
-            restack()
-            
-            fadeOut1.Completed:Connect(function()
-                if ScreenGui and ScreenGui.Parent then
-                    ScreenGui:Destroy()
-                end
-            end)
-        end
-        
-        CloseButton.MouseEnter:Connect(function()
-            TweenService:Create(CloseButton, TweenInfo.new(0.2), {
-                TextColor3 = LIGHT_CHOCOLATE,
-                TextSize = 17
-            }):Play()
-        end)
-        
-        CloseButton.MouseLeave:Connect(function()
-            TweenService:Create(CloseButton, TweenInfo.new(0.2), {
-                TextColor3 = COOKIE_DOUGH,
-                TextSize = 15
-            }):Play()
-        end)
-        
-        CloseButton.MouseButton1Click:Connect(closeNotif)
-        
-        local fadeIn1 = TweenService:Create(NotifFrame, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {BackgroundTransparency = 0.05})
-        local fadeIn2 = TweenService:Create(TitleLabel, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {TextTransparency = 0})
-        local fadeIn3 = TweenService:Create(WhiteLine, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {BackgroundTransparency = 0.2})
-        local fadeIn4 = TweenService:Create(CloseButton, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {TextTransparency = 0})
-        local fadeIn5 = TweenService:Create(MessageLabel, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {TextTransparency = 0})
-        
-        fadeIn1:Play()
-        fadeIn2:Play()
-        fadeIn3:Play()
-        fadeIn4:Play()
-        fadeIn5:Play()
-        
-        task.wait(duration)
-        closeNotif()
-    end)()
+-- Notification Functions (server to client)
+local function notify(player, title, message, duration)
+    duration = duration or 4
+    notificationRemote:FireClient(player, title, message, duration, COLORS)
 end
 
 local function notifyAll(title, message, duration)
+    duration = duration or 4
     for _, player in ipairs(Players:GetPlayers()) do
-        notify(player, title, message, duration)
+        notificationRemote:FireClient(player, title, message, duration, COLORS)
     end
 end
 
 local function notifyStaff(title, message, duration)
+    duration = duration or 4
     for _, player in ipairs(Players:GetPlayers()) do
-        if getRank(player) >= 1 then
-            notify(player, title, message, duration)
+        if getPlayerRank(player) >= 1 then
+            notificationRemote:FireClient(player, title, message, duration, COLORS)
         end
     end
 end
 
--- Enhanced Dashboard (from your reference)
-local function openDashboard(defaultTab, player)
+-- Dashboard function (opens GUI for specific player)
+local function openDashboard(player, defaultTab)
     defaultTab = defaultTab or "Commands"
-    player = player or (Players.LocalPlayer or Players:GetPlayers()[1])
+    dashboardRemote:FireClient(player, "Open", defaultTab, COLORS, RANK_NAMES, PREFIX)
+end
+
+-- Player finding function
+local function findPlayer(input, executor)
+    if not input or input == "" then return nil end
     
-    if not player then return end
+    input = string.lower(input)
     
-    local PlayerGui = player:FindFirstChild("PlayerGui")
-    if not PlayerGui then return end
-    
-    -- Close existing dashboard
-    if admin.currentDashboard and admin.currentDashboard.Parent then
-        local mainFrame = admin.currentDashboard:FindFirstChild("MainFrame")
-        if mainFrame then
-            local fadeOut = TweenService:Create(mainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                BackgroundTransparency = 1
-            })
-            fadeOut:Play()
-            
-            for _, v in ipairs(mainFrame:GetDescendants()) do
-                if v:IsA("TextLabel") or v:IsA("TextButton") then
-                    local tween = TweenService:Create(v, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                        TextTransparency = 1
-                    })
-                    tween:Play()
-                elseif v:IsA("Frame") or v:IsA("ScrollingFrame") then
-                    local tween = TweenService:Create(v, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                        BackgroundTransparency = 1
-                    })
-                    tween:Play()
-                end
-            end
-            
-            task.wait(0.15)
-        end
-        admin.currentDashboard:Destroy()
-        admin.currentDashboard = nil
+    if input == "me" then
+        return executor
     end
     
-    -- Create new dashboard
-    local ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name = "CrumbsDashboard"
-    ScreenGui.ResetOnSpawn = false
-    ScreenGui.Parent = PlayerGui
-    ScreenGui.IgnoreGuiInset = true
-    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    admin.currentDashboard = ScreenGui
+    if input == "all" then
+        return Players:GetPlayers()
+    end
     
-    local MainFrame = Instance.new("Frame")
-    MainFrame.Name = "MainFrame"
-    MainFrame.Size = UDim2.new(0, 750, 0, 420)
-    MainFrame.Position = UDim2.new(0.5, -375, 0.5, -210)
-    MainFrame.BackgroundColor3 = CHOCOLATE
-    MainFrame.BackgroundTransparency = 1
-    MainFrame.BorderSizePixel = 2
-    MainFrame.BorderColor3 = LIGHT_CHOCOLATE
-    MainFrame.Parent = ScreenGui
+    if input == "others" then
+        local others = {}
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= executor then
+                table.insert(others, plr)
+            end
+        end
+        return others
+    end
     
-    local MainCorner = Instance.new("UICorner")
-    MainCorner.CornerRadius = UDim.new(0, 12)
-    MainCorner.Parent = MainFrame
+    if input == "random" then
+        local eligible = {}
+        for _, plr in ipairs(Players:GetPlayers()) do
+            table.insert(eligible, plr)
+        end
+        return #eligible > 0 and {eligible[math.random(1, #eligible)]} or {}
+    end
     
-    local TopBar = Instance.new("Frame")
-    TopBar.Name = "TopBar"
-    TopBar.Size = UDim2.new(1, 0, 0, 38)
-    TopBar.BackgroundColor3 = MILK_CHOCOLATE
-    TopBar.BackgroundTransparency = 1
-    TopBar.BorderSizePixel = 0
-    TopBar.Parent = MainFrame
+    if input == "admins" or input == "staff" then
+        local staff = {}
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if getPlayerRank(plr) >= 1 then
+                table.insert(staff, plr)
+            end
+        end
+        return staff
+    end
     
-    local TopBarCorner = Instance.new("UICorner")
-    TopBarCorner.CornerRadius = UDim.new(0, 12)
-    TopBarCorner.Parent = TopBar
+    if input == "nonadmins" then
+        local users = {}
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if getPlayerRank(plr) == 0 then
+                table.insert(users, plr)
+            end
+        end
+        return users
+    end
     
-    local Title = Instance.new("TextLabel")
-    Title.Name = "Title"
-    Title.Size = UDim2.new(0, 200, 0, 38)
-    Title.Position = UDim2.new(0.36, 0, 0, 0)
-    Title.BackgroundTransparency = 1
-    Title.Text = "Crumbs Admin"
-    Title.TextColor3 = OFF_WHITE
-    Title.TextTransparency = 1
-    Title.TextSize = 22
-    Title.Font = Enum.Font.GothamBold
-    Title.Parent = TopBar
+    -- Find by exact name
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if string.lower(plr.Name) == input or string.lower(plr.DisplayName) == input then
+            return {plr}
+        end
+    end
     
-    local CloseButton = Instance.new("TextButton")
-    CloseButton.Name = "CloseButton"
-    CloseButton.Size = UDim2.new(0, 32, 0, 32)
-    CloseButton.Position = UDim2.new(1, -37, 0, 3)
-    CloseButton.BackgroundTransparency = 1
-    CloseButton.Text = "X"
-    CloseButton.TextColor3 = OFF_WHITE
-    CloseButton.TextTransparency = 1
-    CloseButton.TextSize = 18
-    CloseButton.Font = Enum.Font.GothamBold
-    CloseButton.Parent = TopBar
+    -- Find by partial name
+    local results = {}
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if string.find(string.lower(plr.Name), input, 1, true) or 
+           string.find(string.lower(plr.DisplayName), input, 1, true) then
+            table.insert(results, plr)
+        end
+    end
     
-    local TabBar = Instance.new("Frame")
-    TabBar.Name = "TabBar"
-    TabBar.Size = UDim2.new(1, -16, 0, 42)
-    TabBar.Position = UDim2.new(0, 8, 0, 46)
-    TabBar.BackgroundColor3 = MILK_CHOCOLATE
-    TabBar.BackgroundTransparency = 1
-    TabBar.BorderSizePixel = 1
-    TabBar.BorderColor3 = LIGHT_CHOCOLATE
-    TabBar.Parent = MainFrame
+    return #results > 0 and results or nil
+end
+
+-- Log admin actions
+local function logAdminAction(admin, action, target, details)
+    local logEntry = {
+        timestamp = os.time(),
+        admin = admin.Name,
+        action = action,
+        target = target and target.Name or "N/A",
+        details = details or ""
+    }
+    table.insert(adminLogs, logEntry)
+    if #adminLogs > 100 then table.remove(adminLogs, 1) end
+    print(string.format("[ADMIN] %s - %s %s: %s", admin.Name, action, target and target.Name or "", details))
+end
+
+-- COMMAND FUNCTIONS
+local function cmd_rj(executor, args)
+    notify(executor, "Crumbs Admin", "Rejoining...", 2)
+    logAdminAction(executor, "REJOIN", executor, "Player rejoined server")
+    task.wait(1)
+    TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, executor)
+end
+
+local function cmd_punish(executor, args)
+    if not args[1] then 
+        notify(executor, "Crumbs Admin", "Usage: ,punish <player>", 3)
+        return 
+    end
     
-    local TabBarCorner = Instance.new("UICorner")
-    TabBarCorner.CornerRadius = UDim.new(0, 8)
-    TabBarCorner.Parent = TabBar
+    local targets = findPlayer(args[1], executor)
+    if not targets then
+        notify(executor, "Crumbs Admin", "Player not found.", 3)
+        return
+    end
     
-    local CommandsTab = Instance.new("TextButton")
-    CommandsTab.Name = "CommandsTab"
-    CommandsTab.Size = UDim2.new(0.5, -5, 0, 36)
-    CommandsTab.Position = UDim2.new(0, 4, 0, 3)
-    CommandsTab.BackgroundColor3 = COOKIE_DOUGH
-    CommandsTab.BackgroundTransparency = 1
-    CommandsTab.BorderSizePixel = 1
-    CommandsTab.BorderColor3 = LIGHT_CHOCOLATE
-    CommandsTab.Text = "Commands"
-    CommandsTab.TextColor3 = CHOCOLATE
-    CommandsTab.TextTransparency = 1
-    CommandsTab.TextSize = 16
-    CommandsTab.Font = Enum.Font.GothamBold
-    CommandsTab.Parent = TabBar
+    local count = 0
+    for _, target in ipairs(targets) do
+        if target.Character then
+            target.Character:Destroy()
+            count = count + 1
+        end
+    end
     
-    local CommandsTabCorner = Instance.new("UICorner")
-    CommandsTabCorner.CornerRadius = UDim.new(0, 6)
-    CommandsTabCorner.Parent = CommandsTab
+    notify(executor, "Crumbs Admin", "Punished " .. count .. " player(s).", 3)
+    if count > 0 then
+        notifyStaff("Crumbs Admin", executor.Name .. " punished " .. count .. " player(s)", 3)
+    end
+    logAdminAction(executor, "PUNISH", targets[1], "Punished " .. count .. " players")
+end
+
+local function cmd_kill(executor, args)
+    if not args[1] then 
+        notify(executor, "Crumbs Admin", "Usage: ,kill <player>", 3)
+        return 
+    end
     
-    local CreditsTab = Instance.new("TextButton")
-    CreditsTab.Name = "CreditsTab"
-    CreditsTab.Size = UDim2.new(0.5, -5, 0, 36)
-    CreditsTab.Position = UDim2.new(0.5, 1, 0, 3)
-    CreditsTab.BackgroundColor3 = MILK_CHOCOLATE
-    CreditsTab.BackgroundTransparency = 1
-    CreditsTab.BorderSizePixel = 1
-    CreditsTab.BorderColor3 = LIGHT_CHOCOLATE
-    CreditsTab.Text = "Credits"
-    CreditsTab.TextColor3 = OFF_WHITE
-    CreditsTab.TextTransparency = 1
-    CreditsTab.TextSize = 16
-    CreditsTab.Font = Enum.Font.GothamBold
-    CreditsTab.Parent = TabBar
+    local targets = findPlayer(args[1], executor)
+    if not targets then
+        notify(executor, "Crumbs Admin", "Player not found.", 3)
+        return
+    end
     
-    local CreditsTabCorner = Instance.new("UICorner")
-    CreditsTabCorner.CornerRadius = UDim.new(0, 6)
-    CreditsTabCorner.Parent = CreditsTab
+    local count = 0
+    for _, target in ipairs(targets) do
+        local head = getPlayerHead(target)
+        if head then
+            head:Destroy()
+            count = count + 1
+        end
+    end
     
-    local ContentFrame = Instance.new("Frame")
-    ContentFrame.Name = "ContentFrame"
-    ContentFrame.Size = UDim2.new(1, -16, 1, -104)
-    ContentFrame.Position = UDim2.new(0, 8, 0, 96)
-    ContentFrame.BackgroundColor3 = MILK_CHOCOLATE
-    ContentFrame.BackgroundTransparency = 1
-    ContentFrame.BorderSizePixel = 1
-    ContentFrame.BorderColor3 = LIGHT_CHOCOLATE
-    ContentFrame.Parent = MainFrame
+    notify(executor, "Crumbs Admin", "Killed " .. count .. " player(s).", 3)
+    logAdminAction(executor, "KILL", targets[1], "Killed " .. count .. " players")
+end
+
+local function cmd_freeze(executor, args)
+    if not args[1] then 
+        notify(executor, "Crumbs Admin", "Usage: ,freeze <player>", 3)
+        return 
+    end
     
-    local ContentCorner = Instance.new("UICorner")
-    ContentCorner.CornerRadius = UDim.new(0, 8)
-    ContentCorner.Parent = ContentFrame
+    local targets = findPlayer(args[1], executor)
+    if not targets then
+        notify(executor, "Crumbs Admin", "Player not found.", 3)
+        return
+    end
     
-    local CommandsContent = Instance.new("ScrollingFrame")
-    CommandsContent.Name = "CommandsContent"
-    CommandsContent.Size = UDim2.new(1, 0, 1, 0)
-    CommandsContent.Position = UDim2.new(0, 0, 0, 0)
-    CommandsContent.BackgroundColor3 = MILK_CHOCOLATE
-    CommandsContent.BackgroundTransparency = 0
-    CommandsContent.BorderSizePixel = 0
-    CommandsContent.BorderColor3 = LIGHT_CHOCOLATE
-    CommandsContent.ScrollBarThickness = 6
-    CommandsContent.ScrollBarImageColor3 = COOKIE_DOUGH
-    CommandsContent.Visible = (defaultTab == "Commands")
-    CommandsContent.Parent = ContentFrame
+    local count = 0
+    for _, target in ipairs(targets) do
+        if target.Character then
+            for _, part in ipairs(getPlayerParts(target)) do
+                part.Anchored = true
+            end
+            count = count + 1
+        end
+    end
     
-    local CommandsLayout = Instance.new("UIListLayout")
-    CommandsLayout.Parent = CommandsContent
-    CommandsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    CommandsLayout.Padding = UDim.new(0, 5)
+    notify(executor, "Crumbs Admin", "Frozen " .. count .. " player(s).", 3)
+    logAdminAction(executor, "FREEZE", targets[1], "Frozen " .. count .. " players")
+end
+
+local function cmd_unfreeze(executor, args)
+    if not args[1] then 
+        notify(executor, "Crumbs Admin", "Usage: ,unfreeze <player>", 3)
+        return 
+    end
     
-    local CommandsPadding = Instance.new("UIPadding")
-    CommandsPadding.Parent = CommandsContent
-    CommandsPadding.PaddingTop = UDim.new(0, 5)
-    CommandsPadding.PaddingLeft = UDim.new(0, 5)
-    CommandsPadding.PaddingRight = UDim.new(0, 5)
+    local targets = findPlayer(args[1], executor)
+    if not targets then
+        notify(executor, "Crumbs Admin", "Player not found.", 3)
+        return
+    end
     
-    local CreditsContent = Instance.new("ScrollingFrame")
-    CreditsContent.Name = "CreditsContent"
-    CreditsContent.Size = UDim2.new(1, 0, 1, 0)
-    CreditsContent.Position = UDim2.new(0, 0, 0, 0)
-    CreditsContent.BackgroundColor3 = MILK_CHOCOLATE
-    CreditsContent.BackgroundTransparency = 1
-    CreditsContent.BorderSizePixel = 0
-    CreditsContent.BorderColor3 = LIGHT_CHOCOLATE
-    CreditsContent.ScrollBarThickness = 6
-    CreditsContent.ScrollBarImageColor3 = COOKIE_DOUGH
-    CreditsContent.Visible = (defaultTab == "Credits")
-    CreditsContent.Parent = ContentFrame
+    local count = 0
+    for _, target in ipairs(targets) do
+        if target.Character then
+            for _, part in ipairs(getPlayerParts(target)) do
+                part.Anchored = false
+            end
+            count = count + 1
+        end
+    end
     
-    local CreditsLayout = Instance.new("UIListLayout")
-    CreditsLayout.Parent = CreditsContent
-    CreditsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    CreditsLayout.Padding = UDim.new(0, 10)
-    CreditsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    notify(executor, "Crumbs Admin", "Unfrozen " .. count .. " player(s).", 3)
+end
+
+local function cmd_noclip(executor, args)
+    if not args[1] then 
+        notify(executor, "Crumbs Admin", "Usage: ,noclip <player>", 3)
+        return 
+    end
     
-    local CreditsPadding = Instance.new("UIPadding")
-    CreditsPadding.Parent = CreditsContent
-    CreditsPadding.PaddingTop = UDim.new(0, 10)
-    CreditsPadding.PaddingLeft = UDim.new(0, 10)
-    CreditsPadding.PaddingRight = UDim.new(0, 10)
+    local targets = findPlayer(args[1], executor)
+    if not targets then
+        notify(executor, "Crumbs Admin", "Player not found.", 3)
+        return
+    end
+    
+    local count = 0
+    for _, target in ipairs(targets) do
+        if target.Character then
+            for _, part in ipairs(getPlayerParts(target)) do
+                part.CanCollide = false
+            end
+            count = count + 1
+        end
+    end
+    
+    notify(executor, "Crumbs Admin", "Noclip enabled for " .. count .. " player(s).", 3)
+end
+
+local function cmd_clip(executor, args)
+    if not args[1] then 
+        notify(executor, "Crumbs Admin", "Usage: ,clip <player>", 3)
+        return 
+    end
+    
+    local targets = findPlayer(args[1], executor)
+    if not targets then
+        notify(executor, "Crumbs Admin", "Player not found.", 3)
+        return
+    end
+    
+    local count = 0
+    for _, target in ipairs(targets) do
+        if target.Character then
+            for _, part in ipairs(getPlayerParts(target)) do
+                part.CanCollide = true
+            end
+            count = count + 1
+        end
+    end
+    
+    notify(executor, "Crumbs Admin", "Clip enabled for " .. count .. " player(s).", 3)
+end
+
+local function cmd_void(executor, args)
+    if not args[1] then 
+        notify(executor, "Crumbs Admin", "Usage: ,void <player>", 3)
+        return 
+    end
+    
+    local targets = findPlayer(args[1], executor)
+    if not targets then
+        notify(executor, "Crumbs Admin", "Player not found.", 3)
+        return
+    end
+    
+    local count = 0
+    for _, target in ipairs(targets) do
+        if target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+            target.Character.HumanoidRootPart.CFrame = CFrame.new(0, -5000, 0)
+            count = count + 1
+        end
+    end
+    
+    notify(executor, "Crumbs Admin", "Sent " .. count .. " player(s) to the void.", 3)
+end
+
+local function cmd_skydive(executor, args)
+    if #args < 1 then 
+        notify(executor, "Crumbs Admin", "Usage: ,skydive <player> [height]", 3)
+        return 
+    end
+    
+    local height = tonumber(args[2]) or 1000
+    if height < 1000 then height = 1000 end
+    
+    local targets = findPlayer(args[1], executor)
+    if not targets then
+        notify(executor, "Crumbs Admin", "Player not found.", 3)
+        return
+    end
+    
+    local count = 0
+    for _, target in ipairs(targets) do
+        if target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+            local pos = target.Character.HumanoidRootPart.Position
+            target.Character.HumanoidRootPart.CFrame = CFrame.new(pos.X, pos.Y + height, pos.Z)
+            count = count + 1
+        end
+    end
+    
+    notify(executor, "Crumbs Admin", "Launched " .. count .. " player(s) " .. height .. " studs.", 3)
+end
+
+local function cmd_tp(executor, args)
+    if #args < 2 then 
+        notify(executor, "Crumbs Admin", "Usage: ,tp <player> <destination>", 3)
+        return 
+    end
+    
+    local destPlayers = findPlayer(args[2], executor)
+    if not destPlayers then
+        notify(executor, "Crumbs Admin", "Destination not found.", 3)
+        return
+    end
+    local dest = destPlayers[1]
+    
+    if not dest.Character or not dest.Character:FindFirstChild("HumanoidRootPart") then
+        notify(executor, "Crumbs Admin", "Destination has no character.", 3)
+        return
+    end
+    
+    local destPos = dest.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, -5)
+    
+    local targets = findPlayer(args[1], executor)
+    if not targets then
+        notify(executor, "Crumbs Admin", "Target not found.", 3)
+        return
+    end
+    
+    local count = 0
+    for _, target in ipairs(targets) do
+        if target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+            target.Character.HumanoidRootPart.CFrame = destPos
+            count = count + 1
+        end
+    end
+    
+    notify(executor, "Crumbs Admin", "Teleported " .. count .. " player(s) to " .. dest.Name, 3)
+end
+
+local function cmd_bring(executor, args)
+    if #args < 1 then 
+        notify(executor, "Crumbs Admin", "Usage: ,bring <player>", 3)
+        return 
+    end
+    
+    if not executor.Character or not executor.Character:FindFirstChild("HumanoidRootPart") then
+        notify(executor, "Crumbs Admin", "You have no character.", 3)
+        return
+    end
+    
+    local myPos = executor.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, -5)
+    
+    local targets = findPlayer(args[1], executor)
+    if not targets then
+        notify(executor, "Crumbs Admin", "Player not found.", 3)
+        return
+    end
+    
+    local count = 0
+    for _, target in ipairs(targets) do
+        if target ~= executor and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+            target.Character.HumanoidRootPart.CFrame = myPos
+            count = count + 1
+        end
+    end
+    
+    notify(executor, "Crumbs Admin", "Brought " .. count .. " player(s) to you.", 3)
+end
+
+local function cmd_invisible(executor, args)
+    if #args < 1 then 
+        notify(executor, "Crumbs Admin", "Usage: ,invisible <player>", 3)
+        return 
+    end
+    
+    local targets = findPlayer(args[1], executor)
+    if not targets then
+        notify(executor, "Crumbs Admin", "Player not found.", 3)
+        return
+    end
+    
+    local count = 0
+    for _, target in ipairs(targets) do
+        if target.Character then
+            for _, part in ipairs(getPlayerParts(target)) do
+                part.Transparency = 1
+                for _, child in ipairs(part:GetChildren()) do
+                    if child:IsA("Decal") or child:IsA("Texture") then
+                        child.Transparency = 1
+                    end
+                end
+            end
+            count = count + 1
+        end
+    end
+    
+    notify(executor, "Crumbs Admin", "Made " .. count .. " player(s) invisible.", 3)
+end
+
+local function cmd_visible(executor, args)
+    if #args < 1 then 
+        notify(executor, "Crumbs Admin", "Usage: ,visible <player>", 3)
+        return 
+    end
+    
+    local targets = findPlayer(args[1], executor)
+    if not targets then
+        notify(executor, "Crumbs Admin", "Player not found.", 3)
+        return
+    end
+    
+    local count = 0
+    for _, target in ipairs(targets) do
+        if target.Character then
+            for _, part in ipairs(getPlayerParts(target)) do
+                part.Transparency = 0
+                for _, child in ipairs(part:GetChildren()) do
+                    if child:IsA("Decal") or child:IsA("Texture") then
+                        child.Transparency = 0
+                    end
+                end
+            end
+            count = count + 1
+        end
+    end
+    
+    notify(executor, "Crumbs Admin", "Made " .. count .. " player(s) visible.", 3)
+end
+
+local function cmd_loopkill(executor, args)
+    if #args < 1 then 
+        notify(executor, "Crumbs Admin", "Usage: ,loopkill <player>", 3)
+        return 
+    end
+    
+    local targets = findPlayer(args[1], executor)
+    if not targets then
+        notify(executor, "Crumbs Admin", "Player not found.", 3)
+        return
+    end
+    
+    for _, target in ipairs(targets) do
+        if target ~= executor then
+            activeLoopKills[target.UserId] = true
+            
+            -- Setup respawn connection
+            local connection
+            connection = target.CharacterAdded:Connect(function()
+                task.wait(0.1)
+                if activeLoopKills[target.UserId] then
+                    local head = getPlayerHead(target)
+                    if head then head:Destroy() end
+                end
+            end)
+            activeLoopKills[target.UserId .. "_conn"] = connection
+        end
+    end
+    
+    notify(executor, "Crumbs Admin", "Loop kill started for " .. #targets .. " player(s).", 3)
+    logAdminAction(executor, "LOOPKILL", targets[1], "Started loop kill")
+end
+
+local function cmd_unloopkill(executor, args)
+    if #args < 1 then 
+        notify(executor, "Crumbs Admin", "Usage: ,unloopkill <player/all>", 3)
+        return 
+    end
+    
+    if args[1]:lower() == "all" then
+        for userId, _ in pairs(activeLoopKills) do
+            activeLoopKills[userId] = nil
+            if activeLoopKills[userId .. "_conn"] then
+                activeLoopKills[userId .. "_conn"]:Disconnect()
+                activeLoopKills[userId .. "_conn"] = nil
+            end
+        end
+        notify(executor, "Crumbs Admin", "Stopped all loop kills.", 3)
+        return
+    end
+    
+    local targets = findPlayer(args[1], executor)
+    if not targets then
+        notify(executor, "Crumbs Admin", "Player not found.", 3)
+        return
+    end
+    
+    local count = 0
+    for _, target in ipairs(targets) do
+        if activeLoopKills[target.UserId] then
+            activeLoopKills[target.UserId] = nil
+            if activeLoopKills[target.UserId .. "_conn"] then
+                activeLoopKills[target.UserId .. "_conn"]:Disconnect()
+                activeLoopKills[target.UserId .. "_conn"] = nil
+            end
+            count = count + 1
+        end
+    end
+    
+    notify(executor, "Crumbs Admin", "Stopped loop kill for " .. count .. " player(s).", 3)
+end
+
+local function cmd_looppunish(executor, args)
+    if #args < 1 then 
+        notify(executor, "Crumbs Admin", "Usage: ,looppunish <player>", 3)
+        return 
+    end
+    
+    local targets = findPlayer(args[1], executor)
+    if not targets then
+        notify(executor, "Crumbs Admin", "Player not found.", 3)
+        return
+    end
+    
+    for _, target in ipairs(targets) do
+        if target ~= executor then
+            activePunishments[target.UserId] = true
+            
+            -- Setup respawn connection
+            local connection
+            connection = target.CharacterAdded:Connect(function()
+                task.wait(0.1)
+                if activePunishments[target.UserId] then
+                    target.Character:Destroy()
+                end
+            end)
+            activePunishments[target.UserId .. "_conn"] = connection
+        end
+    end
+    
+    notify(executor, "Crumbs Admin", "Loop punish started for " .. #targets .. " player(s).", 3)
+    logAdminAction(executor, "LOOPPUNISH", targets[1], "Started loop punish")
+end
+
+local function cmd_unlooppunish(executor, args)
+    if #args < 1 then 
+        notify(executor, "Crumbs Admin", "Usage: ,unlooppunish <player/all>", 3)
+        return 
+    end
+    
+    if args[1]:lower() == "all" then
+        for userId, _ in pairs(activePunishments) do
+            activePunishments[userId] = nil
+            if activePunishments[userId .. "_conn"] then
+                activePunishments[userId .. "_conn"]:Disconnect()
+                activePunishments[userId .. "_conn"] = nil
+            end
+        end
+        notify(executor, "Crumbs Admin", "Stopped all loop punishes.", 3)
+        return
+    end
+    
+    local targets = findPlayer(args[1], executor)
+    if not targets then
+        notify(executor, "Crumbs Admin", "Player not found.", 3)
+        return
+    end
+    
+    local count = 0
+    for _, target in ipairs(targets) do
+        if activePunishments[target.UserId] then
+            activePunishments[target.UserId] = nil
+            if activePunishments[target.UserId .. "_conn"] then
+                activePunishments[target.UserId .. "_conn"]:Disconnect()
+                activePunishments[target.UserId .. "_conn"] = nil
+            end
+            count = count + 1
+        end
+    end
+    
+    notify(executor, "Crumbs Admin", "Stopped loop punish for " .. count .. " player(s).", 3)
+end
+
+local function cmd_mute(executor, args)
+    if #args < 1 then 
+        notify(executor, "Crumbs Admin", "Usage: ,mute <player>", 3)
+        return 
+    end
+    
+    local targets = findPlayer(args[1], executor)
+    if not targets then
+        notify(executor, "Crumbs Admin", "Player not found.", 3)
+        return
+    end
+    
+    for _, target in ipairs(targets) do
+        mutedPlayers[target.UserId] = true
+        notify(target, "Crumbs Admin", "You have been muted by " .. executor.Name, 3)
+    end
+    
+    notify(executor, "Crumbs Admin", "Muted " .. #targets .. " player(s).", 3)
+end
+
+local function cmd_unmute(executor, args)
+    if #args < 1 then 
+        notify(executor, "Crumbs Admin", "Usage: ,unmute <player/all>", 3)
+        return 
+    end
+    
+    if args[1]:lower() == "all" then
+        mutedPlayers = {}
+        notify(executor, "Crumbs Admin", "Unmuted all players.", 3)
+        return
+    end
+    
+    local targets = findPlayer(args[1], executor)
+    if not targets then
+        notify(executor, "Crumbs Admin", "Player not found.", 3)
+        return
+    end
+    
+    for _, target in ipairs(targets) do
+        mutedPlayers[target.UserId] = nil
+        notify(target, "Crumbs Admin", "You have been unmuted.", 3)
+    end
+    
+    notify(executor, "Crumbs Admin", "Unmuted " .. #targets .. " player(s).", 3)
+end
+
+local function cmd_god(executor, args)
+    if #args < 1 then 
+        notify(executor, "Crumbs Admin", "Usage: ,god <player>", 3)
+        return 
+    end
+    
+    local targets = findPlayer(args[1], executor)
+    if not targets then
+        notify(executor, "Crumbs Admin", "Player not found.", 3)
+        return
+    end
+    
+    for _, target in ipairs(targets) do
+        godModePlayers[target.UserId] = not godModePlayers[target.UserId]
+        local status = godModePlayers[target.UserId] and "ENABLED" or "DISABLED"
+        notify(target, "Crumbs Admin", "God mode " .. status, 3)
+    end
+    
+    notify(executor, "Crumbs Admin", "Toggled god mode for " .. #targets .. " player(s).", 3)
+end
+
+local function cmd_fly(executor, args)
+    if #args < 1 then 
+        notify(executor, "Crumbs Admin", "Usage: ,fly <player>", 3)
+        return 
+    end
+    
+    local targets = findPlayer(args[1], executor)
+    if not targets then
+        notify(executor, "Crumbs Admin", "Player not found.", 3)
+        return
+    end
+    
+    for _, target in ipairs(targets) do
+        flyModePlayers[target.UserId] = not flyModePlayers[target.UserId]
+        local status = flyModePlayers[target.UserId] and "ENABLED" (use space)" or "DISABLED"
+        notify(target, "Crumbs Admin", "Flight mode " .. status, 3)
+        
+        if flyModePlayers[target.UserId] then
+            local humanoid = getPlayerHumanoid(target)
+            if humanoid then
+                humanoid.PlatformStand = true
+            end
+        else
+            local humanoid = getPlayerHumanoid(target)
+            if humanoid then
+                humanoid.PlatformStand = false
+            end
+        end
+    end
+    
+    notify(executor, "Crumbs Admin", "Toggled flight for " .. #targets .. " player(s).", 3)
+end
+
+local function cmd_kick(executor, args)
+    if getPlayerRank(executor) < 3 then
+        notify(executor, "Crumbs Admin", "You need Baker rank (3) to kick.", 3)
+        return
+    end
+    
+    if #args < 1 then 
+        notify(executor, "Crumbs Admin", "Usage: ,kick <player> [reason]", 3)
+        return 
+    end
+    
+    local reason = #args > 1 and table.concat(args, " ", 2) or "No reason provided"
+    local targets = findPlayer(args[1], executor)
+    
+    if not targets then
+        notify(executor, "Crumbs Admin", "Player not found.", 3)
+        return
+    end
+    
+    local count = 0
+    for _, target in ipairs(targets) do
+        if target ~= executor then
+            notifyAll("Crumbs Admin", target.Name .. " was kicked by " .. executor.Name .. " (" .. reason .. ")", 5)
+            target:Kick("Kicked by " .. executor.Name .. ": " .. reason)
+            count = count + 1
+        end
+    end
+    
+    notify(executor, "Crumbs Admin", "Kicked " .. count .. " player(s).", 3)
+    logAdminAction(executor, "KICK", targets[1], "Reason: " .. reason)
+end
+
+local function cmd_ban(executor, args)
+    if getPlayerRank(executor) < 3 then
+        notify(executor, "Crumbs Admin", "You need Baker rank (3) to ban.", 3)
+        return
+    end
+    
+    if #args < 1 then 
+        notify(executor, "Crumbs Admin", "Usage: ,ban <player> [duration] [reason]", 3)
+        return 
+    end
+    
+    local targetName = args[1]
+    local duration = nil
+    local reason = ""
+    
+    if args[2] and tonumber(args[2]) then
+        duration = tonumber(args[2])
+        reason = #args > 2 and table.concat(args, " ", 3) or "No reason provided"
+    else
+        reason = #args > 1 and table.concat(args, " ", 2) or "No reason provided"
+    end
+    
+    local targets = findPlayer(args[1], executor)
+    if not targets then
+        notify(executor, "Crumbs Admin", "Player not found.", 3)
+        return
+    end
+    
+    for _, target in ipairs(targets) do
+        if target ~= executor then
+            local banData = {
+                reason = reason,
+                admin = executor.Name,
+                timestamp = os.time(),
+                expiry = duration and (os.time() + duration) or nil
+            }
+            
+            bannedPlayers[target.UserId] = banData
+            activePunishments[target.UserId] = true
+            
+            local durationText = duration and (" for " .. duration .. " seconds") or " permanently"
+            notifyAll("Crumbs Admin", target.Name .. " was banned by " .. executor.Name .. durationText .. "\nReason: " .. reason, 5)
+            
+            target:Kick("Banned by " .. executor.Name .. durationText .. ": " .. reason)
+        end
+    end
+    
+    notify(executor, "Crumbs Admin", "Banned " .. #targets .. " player(s).", 3)
+    logAdminAction(executor, "BAN", targets[1], "Duration: " .. (duration or "permanent") .. " Reason: " .. reason)
+end
+
+local function cmd_unban(executor, args)
+    if getPlayerRank(executor) < 3 then
+        notify(executor, "Crumbs Admin", "You need Baker rank (3) to unban.", 3)
+        return
+    end
+    
+    if #args < 1 then 
+        notify(executor, "Crumbs Admin", "Usage: ,unban <player/userid>", 3)
+        return 
+    end
+    
+    if tonumber(args[1]) then
+        local userId = tonumber(args[1])
+        if bannedPlayers[userId] then
+            bannedPlayers[userId] = nil
+            activePunishments[userId] = nil
+            notify(executor, "Crumbs Admin", "Unbanned user ID: " .. userId, 3)
+            notifyAll("Crumbs Admin", "User " .. userId .. " was unbanned by " .. executor.Name, 5)
+            return
+        end
+    end
+    
+    local targets = findPlayer(args[1], executor)
+    if targets and targets[1] and bannedPlayers[targets[1].UserId] then
+        local target = targets[1]
+        bannedPlayers[target.UserId] = nil
+        activePunishments[target.UserId] = nil
+        notify(executor, "Crumbs Admin", "Unbanned " .. target.Name, 3)
+        notifyAll("Crumbs Admin", target.Name .. " was unbanned by " .. executor.Name, 5)
+    else
+        notify(executor, "Crumbs Admin", "Player not found or not banned.", 3)
+    end
+end
+
+local function cmd_clear(executor, args)
+    if getPlayerRank(executor) < 3 then
+        notify(executor, "Crumbs Admin", "You need Baker rank (3) to clear workspace.", 3)
+        return
+    end
+    
+    local count = 0
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and not obj:IsDescendantOf(Players) and obj.Name ~= "Baseplate" and not obj:IsA("Terrain") then
+            obj:Destroy()
+            count = count + 1
+        end
+    end
+    
+    notify(executor, "Crumbs Admin", "Cleared " .. count .. " parts from workspace.", 3)
+    logAdminAction(executor, "CLEAR", nil, "Cleared " .. count .. " parts")
+end
+
+local function cmd_announce(executor, args)
+    if getPlayerRank(executor) < 3 then
+        notify(executor, "Crumbs Admin", "You need Baker rank (3) to announce.", 3)
+        return
+    end
+    
+    if #args < 1 then 
+        notify(executor, "Crumbs Admin", "Usage: ,announce <message>", 3)
+        return 
+    end
+    
+    local message = table.concat(args, " ")
+    notifyAll("📢 ANNOUNCEMENT", executor.Name .. ": " .. message, 8)
+    logAdminAction(executor, "ANNOUNCE", nil, "Message: " .. message)
+end
+
+local function cmd_players(executor, args)
+    local list = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        table.insert(list, player.Name)
+    end
+    notify(executor, "Crumbs Admin", "Players (" .. #list .. "): " .. table.concat(list, ", "), 5)
+end
+
+local function cmd_staff(executor, args)
+    local list = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        local rank = getPlayerRank(player)
+        if rank > 0 then
+            table.insert(list, player.Name .. " (" .. RANK_NAMES[rank] .. ")")
+        end
+    end
+    
+    if #list > 0 then
+        notify(executor, "Crumbs Admin", "Online staff: " .. table.concat(list, ", "), 5)
+    else
+        notify(executor, "Crumbs Admin", "No staff online.", 3)
+    end
+end
+
+local function cmd_serverinfo(executor, args)
+    local info = string.format(
+        "Server Info:\nPlayers: %d/%d\nPlace ID: %d\nJob ID: %s\nUptime: %.1f minutes",
+        #Players:GetPlayers(),
+        Players.MaxPlayers,
+        game.PlaceId,
+        game.JobId:sub(1, 8),
+        (os.time() - (admin.startTime or os.time())) / 60
+    )
+    notify(executor, "Crumbs Admin", info, 8)
+end
+
+local function cmd_save(executor, args)
+    if getPlayerRank(executor) < 4 then
+        notify(executor, "Crumbs Admin", "You need Manager rank (4) to save locations.", 3)
+        return
+    end
+    
+    if #args < 1 then 
+        notify(executor, "Crumbs Admin", "Usage: ,save <location name>", 3)
+        return 
+    end
+    
+    if not executor.Character or not executor.Character:FindFirstChild("HumanoidRootPart") then
+        notify(executor, "Crumbs Admin", "You have no character.", 3)
+        return
+    end
+    
+    local name = table.concat(args, " ")
+    savedLocations[name] = {
+        cframe = executor.Character.HumanoidRootPart.CFrame,
+        savedBy = executor.Name,
+        time = os.time()
+    }
+    
+    notify(executor, "Crumbs Admin", "Saved location: " .. name, 3)
+end
+
+local function cmd_load(executor, args)
+    if getPlayerRank(executor) < 4 then
+        notify(executor, "Crumbs Admin", "You need Manager rank (4) to load locations.", 3)
+        return
+    end
+    
+    if #args < 1 then 
+        notify(executor, "Crumbs Admin", "Usage: ,load <location name>", 3)
+        return 
+    end
+    
+    local name = table.concat(args, " ")
+    
+    if not savedLocations[name] then
+        notify(executor, "Crumbs Admin", "Location not found: " .. name, 3)
+        return
+    end
+    
+    if not executor.Character or not executor.Character:FindFirstChild("HumanoidRootPart") then
+        notify(executor, "Crumbs Admin", "You have no character.", 3)
+        return
+    end
+    
+    executor.Character.HumanoidRootPart.CFrame = savedLocations[name].cframe
+    notify(executor, "Crumbs Admin", "Loaded location: " .. name, 3)
+end
+
+local function cmd_locations(executor, args)
+    if getPlayerRank(executor) < 4 then
+        notify(executor, "Crumbs Admin", "You need Manager rank (4) to view locations.", 3)
+        return
+    end
+    
+    local list = {}
+    for name, _ in pairs(savedLocations) do
+        table.insert(list, name)
+    end
+    
+    if #list == 0 then
+        notify(executor, "Crumbs Admin", "No saved locations.", 3)
+    else
+        notify(executor, "Crumbs Admin", "Saved locations: " .. table.concat(list, ", "), 5)
+    end
+end
+
+local function cmd_removelocation(executor, args)
+    if getPlayerRank(executor) < 4 then
+        notify(executor, "Crumbs Admin", "You need Manager rank (4) to remove locations.", 3)
+        return
+    end
+    
+    if #args < 1 then 
+        notify(executor, "Crumbs Admin", "Usage: ,removelocation <name>", 3)
+        return 
+    end
+    
+    local name = table.concat(args, " ")
+    
+    if not savedLocations[name] then
+        notify(executor, "Crumbs Admin", "Location not found: " .. name, 3)
+        return
+    end
+    
+    savedLocations[name] = nil
+    notify(executor, "Crumbs Admin", "Removed location: " .. name, 3)
+end
+
+local function cmd_rank(executor, args)
+    if getPlayerRank(executor) < 4 then
+        notify(executor, "Crumbs Admin", "You need Manager rank (4) to set ranks.", 3)
+        return
+    end
+    
+    if #args < 2 then 
+        notify(executor, "Crumbs Admin", "Usage: ,rank <player> <rank (0-4)>", 3)
+        return 
+    end
+    
+    local targets = findPlayer(args[1], executor)
+    if not targets then
+        notify(executor, "Crumbs Admin", "Player not found.", 3)
+        return
+    end
+    
+    local target = targets[1]
+    local newRank = tonumber(args[2]) or 0
+    
+    if newRank < 0 or newRank > 4 then
+        notify(executor, "Crumbs Admin", "Rank must be between 0 and 4.", 3)
+        return
+    end
+    
+    tempRanks[target.UserId] = newRank
+    notify(executor, "Crumbs Admin", "Set " .. target.Name .. "'s rank to " .. RANK_NAMES[newRank], 3)
+    notify(target, "Crumbs Admin", "Your rank has been set to " .. RANK_NAMES[newRank], 3)
+    logAdminAction(executor, "RANK", target, "Set rank to " .. RANK_NAMES[newRank])
+end
+
+local function cmd_shutdown(executor, args)
+    if getPlayerRank(executor) < 4 then
+        notify(executor, "Crumbs Admin", "You need Manager rank (4) to shutdown.", 3)
+        return
+    end
+    
+    local seconds = args[1] and tonumber(args[1]) or 30
+    if seconds < 5 then seconds = 5 end
+    if seconds > 60 then seconds = 60 end
+    
+    notifyAll("⚠️ SERVER SHUTDOWN", "Server shutting down in " .. seconds .. " seconds!", 8)
+    logAdminAction(executor, "SHUTDOWN", nil, "Initiating shutdown in " .. seconds .. "s")
+    
+    for i = seconds, 1, -1 do
+        if i <= 10 or i % 10 == 0 then
+            notifyAll("⚠️ SERVER SHUTDOWN", "Shutting down in " .. i .. " seconds!", 3)
+        end
+        task.wait(1)
+    end
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        player:Kick("Server is shutting down.")
+    end
+    
+    task.wait(1)
+    game:Shutdown()
+end
+
+local function cmd_eject(executor, args)
+    if getPlayerRank(executor) < 4 then
+        notify(executor, "Crumbs Admin", "You need Manager rank (4) to eject.", 3)
+        return
+    end
+    
+    notifyAll("Crumbs Admin", "Crumbs Admin is shutting down...", 3)
+    task.wait(1)
+    
+    -- Clean up connections
+    for userId, _ in pairs(activePunishments) do
+        if activePunishments[userId .. "_conn"] then
+            activePunishments[userId .. "_conn"]:Disconnect()
+        end
+    end
+    
+    for userId, _ in pairs(activeLoopKills) do
+        if activeLoopKills[userId .. "_conn"] then
+            activeLoopKills[userId .. "_conn"]:Disconnect()
+        end
+    end
+    
+    -- Destroy the script
+    script:Destroy()
+end
+
+local function cmd_logs(executor, args)
+    if getPlayerRank(executor) < 3 then
+        notify(executor, "Crumbs Admin", "You need Baker rank (3) to view logs.", 3)
+        return
+    end
+    
+    local count = args[1] and tonumber(args[1]) or 10
+    if count > 50 then count = 50 end
+    
+    local logText = "Recent admin logs:\n"
+    local startIdx = math.max(1, #adminLogs - count + 1)
+    
+    for i = startIdx, #adminLogs do
+        local log = adminLogs[i]
+        local timeStr = os.date("%H:%M:%S", log.timestamp)
+        logText = logText .. string.format("[%s] %s: %s\n", timeStr, log.admin, log.action)
+    end
+    
+    notify(executor, "Crumbs Admin", logText, 10)
+end
+
+local function cmd_help(executor, args)
+    openDashboard(executor, "Commands")
+end
+
+-- Command definitions with rank requirements
+local COMMANDS = {
+    -- Rank 0 (Everyone)
+    help = {func = cmd_help, rank = 0, aliases = {"cmds", "commands", "menu"}, minArgs = 0},
+    players = {func = cmd_players, rank = 0, aliases = {"list"}, minArgs = 0},
+    staff = {func = cmd_staff, rank = 0, aliases = {"admins"}, minArgs = 0},
+    serverinfo = {func = cmd_serverinfo, rank = 0, aliases = {"info", "si"}, minArgs = 0},
+    rj = {func = cmd_rj, rank = 0, aliases = {"rejoin", "reconnect"}, minArgs = 0},
+    
+    -- Rank 1 (Customer)
+    punish = {func = cmd_punish, rank = 1, aliases = {"p", "deletechar"}, minArgs = 1},
+    kill = {func = cmd_kill, rank = 1, aliases = {"k", "slay"}, minArgs = 1},
+    freeze = {func = cmd_freeze, rank = 1, aliases = {"fz", "anchor"}, minArgs = 1},
+    unfreeze = {func = cmd_unfreeze, rank = 1, aliases = {"ufz", "unanchor"}, minArgs = 1},
+    noclip = {func = cmd_noclip, rank = 1, aliases = {"nc", "ghost"}, minArgs = 1},
+    clip = {func = cmd_clip, rank = 1, aliases = {"c", "collide"}, minArgs = 1},
+    void = {func = cmd_void, rank = 1, aliases = {"v", "underworld"}, minArgs = 1},
+    skydive = {func = cmd_skydive, rank = 1, aliases = {"sky", "launch"}, minArgs = 1},
+    tp = {func = cmd_tp, rank = 1, aliases = {"teleport", "goto"}, minArgs = 2},
+    bring = {func = cmd_bring, rank = 1, aliases = {"b", "fetch"}, minArgs = 1},
+    invisible = {func = cmd_invisible, rank = 1, aliases = {"inv", "hide"}, minArgs = 1},
+    visible = {func = cmd_visible, rank = 1, aliases = {"vis", "show"}, minArgs = 1},
+    mute = {func = cmd_mute, rank = 1, aliases = {"silence"}, minArgs = 1},
+    unmute = {func = cmd_unmute, rank = 1, aliases = {"unsilence"}, minArgs = 1},
+    
+    -- Rank 2 (Cashier)
+    loopkill = {func = cmd_loopkill, rank = 2, aliases = {"lk", "autokill"}, minArgs = 1},
+    unloopkill = {func = cmd_unloopkill, rank = 2, aliases = {"unlk", "stopkill"}, minArgs = 1},
+    looppunish = {func = cmd_looppunish, rank = 2, aliases = {"lp", "autopunish"}, minArgs = 1},
+    unlooppunish = {func = cmd_unlooppunish, rank = 2, aliases = {"unlp", "stoppunish"}, minArgs = 1},
+    god = {func = cmd_god, rank = 2, aliases = {"godmode"}, minArgs = 1},
+    fly = {func = cmd_fly, rank = 2, aliases = {"flight"}, minArgs = 1},
+    
+    -- Rank 3 (Baker)
+    kick = {func = cmd_kick, rank = 3, aliases = {"kck"}, minArgs = 1},
+    ban = {func = cmd_ban, rank = 3, aliases = {"b"}, minArgs = 1},
+    unban = {func = cmd_unban, rank = 3, aliases = {"ub", "pardon"}, minArgs = 1},
+    clear = {func = cmd_clear, rank = 3, aliases = {"clean", "wipe"}, minArgs = 0},
+    announce = {func = cmd_announce, rank = 3, aliases = {"say", "broadcast"}, minArgs = 1},
+    logs = {func = cmd_logs, rank = 3, aliases = {"adminlogs"}, minArgs = 0},
+    
+    -- Rank 4 (Manager)
+    rank = {func = cmd_rank, rank = 4, aliases = {"setrank"}, minArgs = 2},
+    save = {func = cmd_save, rank = 4, aliases = {"saveloc"}, minArgs = 1},
+    load = {func = cmd_load, rank = 4, aliases = {"loadloc"}, minArgs = 1},
+    locations = {func = cmd_locations, rank = 4, aliases = {"locs"}, minArgs = 0},
+    removelocation = {func = cmd_removelocation, rank = 4, aliases = {"delloc"}, minArgs = 1},
+    shutdown = {func = cmd_shutdown, rank = 4, aliases = {"restart"}, minArgs = 0},
+    eject = {func = cmd_eject, rank = 4, aliases = {"unload", "exit"}, minArgs = 0},
+}
+
+-- Build alias map
+local ALIAS_MAP = {}
+for cmdName, cmdData in pairs(COMMANDS) do
+    ALIAS_MAP[cmdName] = cmdName
+    for _, alias in ipairs(cmdData.aliases) do
+        ALIAS_MAP[alias] = cmdName
+    end
+end
+
+-- Parse command function
+local function parseCommand(input)
+    input = input:gsub("^" .. PREFIX, ""):gsub("^%s+", ""):gsub("%s+$", "")
+    if input == "" then return nil end
+    
+    local parts = {}
+    for part in input:gmatch("%S+") do
+        table.insert(parts, part)
+    end
+    
+    local cmd = parts[1]:lower()
+    table.remove(parts, 1)
+    
+    return cmd, parts
+end
+
+-- Handle commands from client
+commandRemote.OnServerEvent:Connect(function(player, commandText)
+    local cmd, args = parseCommand(commandText)
+    if not cmd then return end
+    
+    -- Check if player is banned
+    if bannedPlayers[player.UserId] then
+        local banData = bannedPlayers[player.UserId]
+        if banData.expiry and os.time() > banData.expiry then
+            bannedPlayers[player.UserId] = nil
+        else
+            notify(player, "Crumbs Admin", "You are banned from using admin commands.", 3)
+            return
+        end
+    end
+    
+    -- Check if player is muted
+    if mutedPlayers[player.UserId] and cmd ~= "unmute" then
+        return -- Silently block commands
+    end
+    
+    local realCmd = ALIAS_MAP[cmd]
+    if not realCmd then
+        notify(player, "Crumbs Admin", "Unknown command. Type " .. PREFIX .. "help", 3)
+        return
+    end
+    
+    local cmdData = COMMANDS[realCmd]
+    local playerRank = getPlayerRank(player)
+    
+    if playerRank < cmdData.rank then
+        notify(player, "Crumbs Admin", "You need " .. RANK_NAMES[cmdData.rank] .. " rank (" .. cmdData.rank .. ") to use this command.", 3)
+        return
+    end
+    
+    if #args < cmdData.minArgs then
+        notify(player, "Crumbs Admin", "Usage: " .. PREFIX .. realCmd .. " <required args>", 3)
+        return
+    end
+    
+    local success, err = pcall(cmdData.func, player, args)
+    if not success then
+        warn("Command error from", player.Name, ":", err)
+        notify(player, "Crumbs Admin", "Command failed: " .. tostring(err), 5)
+    end
+end)
+
+-- Client GUI script (sent to each player)
+local clientScript = [[
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TextChatService = game:GetService("TextChatService")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+
+-- Wait for admin folder
+local adminFolder = ReplicatedStorage:WaitForChild("CrumbsAdmin")
+local commandRemote = adminFolder:WaitForChild("CommandRemote")
+local notificationRemote = adminFolder:WaitForChild("NotificationRemote")
+local dashboardRemote = adminFolder:WaitForChild("DashboardRemote")
+local guiRemote = adminFolder:WaitForChild("GUIRemote")
+
+-- State
+local notificationStack = {}
+local cmdBarVisible = false
+local currentDashboard = nil
+local flyEnabled = false
+local flyConnection = nil
+local colors = {}
+
+-- Color conversion function
+local function rgb(colorTable)
+    return Color3.fromRGB(colorTable[1], colorTable[2], colorTable[3])
+end
+
+-- Create main GUI
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "CrumbsAdminGUI"
+screenGui.Parent = player:WaitForChild("PlayerGui")
+screenGui.ResetOnSpawn = false
+screenGui.IgnoreGuiInset = true
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+-- Command Bar
+local cmdBarFrame = Instance.new("Frame")
+cmdBarFrame.Size = UDim2.new(0.5, 0, 0.08, 0)
+cmdBarFrame.Position = UDim2.new(0.25, 0, 1.2, 0)
+cmdBarFrame.BackgroundTransparency = 1
+cmdBarFrame.Visible = false
+cmdBarFrame.Parent = screenGui
+
+local cmdBarTextBox = Instance.new("TextBox")
+cmdBarTextBox.Size = UDim2.new(1, -4, 1, -4)
+cmdBarTextBox.Position = UDim2.new(0, 2, 0, 2)
+cmdBarTextBox.BackgroundColor3 = Color3.new(0.4, 0.3, 0.2) -- Will be updated from server
+cmdBarTextBox.TextColor3 = Color3.new(1, 1, 1)
+cmdBarTextBox.TextSize = 18
+cmdBarTextBox.Font = Enum.Font.SourceSans
+cmdBarTextBox.PlaceholderText = "Enter command... ( , )"
+cmdBarTextBox.PlaceholderColor3 = Color3.new(0.8, 0.7, 0.5)
+cmdBarTextBox.ClearTextOnFocus = false
+cmdBarTextBox.Text = ""
+cmdBarTextBox.Parent = cmdBarFrame
+
+local textBoxCorner = Instance.new("UICorner")
+textBoxCorner.CornerRadius = UDim.new(0, 10)
+textBoxCorner.Parent = cmdBarTextBox
+
+-- Watermark
+local watermark = Instance.new("Frame")
+watermark.Size = UDim2.new(0, 200, 0, 30)
+watermark.Position = UDim2.new(0, 10, 0, 10)
+watermark.BackgroundColor3 = Color3.new(0.3, 0.2, 0.1)
+watermark.BackgroundTransparency = 0.1
+watermark.BorderSizePixel = 0
+watermark.Parent = screenGui
+
+local watermarkCorner = Instance.new("UICorner")
+watermarkCorner.CornerRadius = UDim.new(0, 8)
+watermarkCorner.Parent = watermark
+
+local watermarkText = Instance.new("TextLabel")
+watermarkText.Size = UDim2.new(1, -10, 1, 0)
+watermarkText.Position = UDim2.new(0, 5, 0, 0)
+watermarkText.BackgroundTransparency = 1
+watermarkText.Text = "Crumbs Admin"
+watermarkText.TextColor3 = Color3.new(0.8, 0.7, 0.5)
+watermarkText.TextSize = 14
+watermarkText.Font = Enum.Font.GothamBold
+watermarkText.TextXAlignment = Enum.TextXAlignment.Left
+watermarkText.Parent = watermark
+
+-- Command bar animation
+local function animateTextBox(show)
+    if show then
+        cmdBarFrame.Visible = true
+        cmdBarFrame.Position = UDim2.new(0.25, 0, 1.2, 0)
+        cmdBarTextBox:CaptureFocus()
+        
+        local tween = TweenService:Create(cmdBarFrame, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
+            Position = UDim2.new(0.25, 0, 0.85, 0)
+        })
+        tween:Play()
+    else
+        local tween = TweenService:Create(cmdBarFrame, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+            Position = UDim2.new(0.25, 0, 1.2, 0)
+        })
+        tween:Play()
+        
+        tween.Completed:Connect(function()
+            cmdBarFrame.Visible = false
+        end)
+    end
+end
+
+-- Input handling
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Enum.KeyCode.Comma then
+        cmdBarVisible = not cmdBarVisible
+        animateTextBox(cmdBarVisible)
+    end
+end)
+
+cmdBarTextBox.FocusLost:Connect(function(enterPressed)
+    if enterPressed then
+        local commandText = cmdBarTextBox.Text
+        cmdBarTextBox.Text = ""
+        cmdBarVisible = false
+        animateTextBox(false)
+        commandRemote:FireServer(commandText)
+    else
+        cmdBarVisible = false
+        animateTextBox(false)
+    end
+end)
+
+-- Chat command handling
+if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+    TextChatService.OnIncomingMessage = function(message)
+        if message.TextSource and message.TextSource.UserId == player.UserId then
+            if string.sub(message.Text, 1, 1) == "," then
+                commandRemote:FireServer(message.Text)
+                return Enum.IncomingMessageResponse.Cancel
+            end
+        end
+        return Enum.IncomingMessageResponse.Default
+    end
+else
+    player.Chatted:Connect(function(message)
+        if string.sub(message, 1, 1) == "," then
+            commandRemote:FireServer(message)
+        end
+    end)
+end
+
+-- Notification system
+notificationRemote.OnClientEvent:Connect(function(title, message, duration, colorTable)
+    colors = colorTable or colors
+    duration = duration or 4
+    
+    local CHOCOLATE = rgb(colors.CHOCOLATE or {74,49,28})
+    local MILK_CHOCOLATE = rgb(colors.MILK_CHOCOLATE or {111,78,55})
+    local LIGHT_CHOCOLATE = rgb(colors.LIGHT_CHOCOLATE or {139,90,43})
+    local COOKIE_DOUGH = rgb(colors.COOKIE_DOUGH or {210,180,140})
+    local OFF_WHITE = rgb(colors.OFF_WHITE or {240,240,240})
+    
+    -- Calculate text size for dynamic height
+    local TextService = game:GetService("TextService")
+    local frameWidth = 280
+    local messagePadding = 20
+    local textWidth = frameWidth - messagePadding
+    
+    local textSize = TextService:GetTextSize(
+        message or "",
+        12,
+        Enum.Font.Gotham,
+        Vector2.new(textWidth, 9999)
+    )
+    
+    local titleAreaHeight = 38
+    local verticalPadding = 10
+    local dynamicHeight = math.max(titleAreaHeight + textSize.Y + verticalPadding, 72)
+    
+    -- Clean up dead notifications
+    for i = #notificationStack, 1, -1 do
+        if not notificationStack[i] or not notificationStack[i].gui or not notificationStack[i].gui.Parent then
+            table.remove(notificationStack, i)
+        end
+    end
+
+    -- Calculate position
+    local yOffset = 10
+    for _, entry in ipairs(notificationStack) do
+        yOffset = yOffset + entry.height + 6
+    end
+    
+    -- Create notification
+    local notifGui = Instance.new("ScreenGui")
+    notifGui.Name = "Notification_" .. tick()
+    notifGui.ResetOnSpawn = false
+    notifGui.Parent = player.PlayerGui
+    notifGui.IgnoreGuiInset = true
+    notifGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    
+    local notifFrame = Instance.new("Frame")
+    notifFrame.Name = "NotificationFrame"
+    notifFrame.Size = UDim2.new(0, frameWidth, 0, dynamicHeight)
+    notifFrame.Position = UDim2.new(1, -290, 1, -(yOffset + dynamicHeight))
+    notifFrame.BackgroundColor3 = CHOCOLATE
+    notifFrame.BackgroundTransparency = 1
+    notifFrame.BorderSizePixel = 0
+    notifFrame.Parent = notifGui
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 15)
+    corner.Parent = notifFrame
+    
+    local titleLabel = Instance.new("TextLabel")
+    titleLabel.Name = "Title"
+    titleLabel.Text = title or "Crumbs Admin"
+    titleLabel.Size = UDim2.new(1, -45, 0, 18)
+    titleLabel.Position = UDim2.new(0, 10, 0, 6)
+    titleLabel.TextColor3 = COOKIE_DOUGH
+    titleLabel.TextTransparency = 1
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.Font = Enum.Font.GothamBold
+    titleLabel.TextSize = 13
+    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    titleLabel.TextYAlignment = Enum.TextYAlignment.Top
+    titleLabel.Parent = notifFrame
+    
+    local whiteLine = Instance.new("Frame")
+    whiteLine.Name = "WhiteLine"
+    whiteLine.Size = UDim2.new(1, -18, 0, 1)
+    whiteLine.Position = UDim2.new(0, 9, 0, 27)
+    whiteLine.BackgroundColor3 = MILK_CHOCOLATE
+    whiteLine.BackgroundTransparency = 1
+    whiteLine.BorderSizePixel = 0
+    whiteLine.Parent = notifFrame
+    
+    local closeButton = Instance.new("TextButton")
+    closeButton.Name = "CloseButton"
+    closeButton.Size = UDim2.new(0, 24, 0, 24)
+    closeButton.Position = UDim2.new(1, -30, 0, 5)
+    closeButton.Text = "X"
+    closeButton.TextColor3 = COOKIE_DOUGH
+    closeButton.TextTransparency = 1
+    closeButton.BackgroundTransparency = 1
+    closeButton.BorderSizePixel = 0
+    closeButton.Font = Enum.Font.GothamBold
+    closeButton.TextSize = 15
+    closeButton.Parent = notifFrame
+    
+    local messageLabel = Instance.new("TextLabel")
+    messageLabel.Name = "Message"
+    messageLabel.Text = message or ""
+    messageLabel.Size = UDim2.new(1, -20, 1, -38)
+    messageLabel.Position = UDim2.new(0, 10, 0, 32)
+    messageLabel.TextColor3 = OFF_WHITE
+    messageLabel.TextTransparency = 1
+    messageLabel.BackgroundTransparency = 1
+    messageLabel.Font = Enum.Font.Gotham
+    messageLabel.TextSize = 12
+    messageLabel.TextXAlignment = Enum.TextXAlignment.Left
+    messageLabel.TextYAlignment = Enum.TextYAlignment.Top
+    messageLabel.TextWrapped = true
+    messageLabel.Parent = notifFrame
+    
+    local stackEntry = {
+        gui = notifGui,
+        frame = notifFrame,
+        height = dynamicHeight,
+        yOffset = yOffset
+    }
+    table.insert(notificationStack, stackEntry)
+    
+    local closed = false
+    
+    local function restack()
+        local runningOffset = 10
+        for _, entry in ipairs(notificationStack) do
+            if entry.gui and entry.gui.Parent and entry.frame and entry.frame.Parent then
+                local targetY = -(runningOffset + entry.height)
+                TweenService:Create(entry.frame, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+                    Position = UDim2.new(1, -290, 1, targetY)
+                }):Play()
+                entry.yOffset = runningOffset
+                runningOffset = runningOffset + entry.height + 6
+            end
+        end
+    end
+    
+    local function closeNotif()
+        if closed then return end
+        closed = true
+        
+        for i, entry in ipairs(notificationStack) do
+            if entry.gui == notifGui then
+                table.remove(notificationStack, i)
+                break
+            end
+        end
+        
+        local fadeOut1 = TweenService:Create(notifFrame, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {BackgroundTransparency = 1})
+        local fadeOut2 = TweenService:Create(titleLabel, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {TextTransparency = 1})
+        local fadeOut3 = TweenService:Create(whiteLine, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {BackgroundTransparency = 1})
+        local fadeOut4 = TweenService:Create(closeButton, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {TextTransparency = 1})
+        local fadeOut5 = TweenService:Create(messageLabel, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {TextTransparency = 1})
+        
+        fadeOut1:Play()
+        fadeOut2:Play()
+        fadeOut3:Play()
+        fadeOut4:Play()
+        fadeOut5:Play()
+        
+        restack()
+        
+        fadeOut1.Completed:Connect(function()
+            if notifGui and notifGui.Parent then
+                notifGui:Destroy()
+            end
+        end)
+    end
+    
+    closeButton.MouseButton1Click:Connect(closeNotif)
+    
+    -- Animate in
+    local fadeIn1 = TweenService:Create(notifFrame, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {BackgroundTransparency = 0.05})
+    local fadeIn2 = TweenService:Create(titleLabel, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {TextTransparency = 0})
+    local fadeIn3 = TweenService:Create(whiteLine, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {BackgroundTransparency = 0.2})
+    local fadeIn4 = TweenService:Create(closeButton, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {TextTransparency = 0})
+    local fadeIn5 = TweenService:Create(messageLabel, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {TextTransparency = 0})
+    
+    fadeIn1:Play()
+    fadeIn2:Play()
+    fadeIn3:Play()
+    fadeIn4:Play()
+    fadeIn5:Play()
+    
+    task.wait(duration)
+    closeNotif()
+end)
+
+-- Dashboard system
+dashboardRemote.OnClientEvent:Connect(function(action, defaultTab, colorTable, rankNames, prefix)
+    colors = colorTable or colors
+    local CHOCOLATE = rgb(colors.CHOCOLATE or {74,49,28})
+    local MILK_CHOCOLATE = rgb(colors.MILK_CHOCOLATE or {111,78,55})
+    local LIGHT_CHOCOLATE = rgb(colors.LIGHT_CHOCOLATE or {139,90,43})
+    local COOKIE_DOUGH = rgb(colors.COOKIE_DOUGH or {210,180,140})
+    local OFF_WHITE = rgb(colors.OFF_WHITE or {240,240,240})
+    
+    if action ~= "Open" then return end
+    
+    -- Close existing dashboard
+    if currentDashboard and currentDashboard.Parent then
+        currentDashboard:Destroy()
+        currentDashboard = nil
+    end
+    
+    -- Create dashboard
+    local dashboardGui = Instance.new("ScreenGui")
+    dashboardGui.Name = "CrumbsDashboard"
+    dashboardGui.ResetOnSpawn = false
+    dashboardGui.Parent = player.PlayerGui
+    dashboardGui.IgnoreGuiInset = true
+    dashboardGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    currentDashboard = dashboardGui
+    
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Name = "MainFrame"
+    mainFrame.Size = UDim2.new(0, 750, 0, 420)
+    mainFrame.Position = UDim2.new(0.5, -375, 0.5, -210)
+    mainFrame.BackgroundColor3 = CHOCOLATE
+    mainFrame.BackgroundTransparency = 0.05
+    mainFrame.BorderSizePixel = 2
+    mainFrame.BorderColor3 = LIGHT_CHOCOLATE
+    mainFrame.Parent = dashboardGui
+    
+    local mainCorner = Instance.new("UICorner")
+    mainCorner.CornerRadius = UDim.new(0, 12)
+    mainCorner.Parent = mainFrame
+    
+    local topBar = Instance.new("Frame")
+    topBar.Name = "TopBar"
+    topBar.Size = UDim2.new(1, 0, 0, 38)
+    topBar.BackgroundColor3 = MILK_CHOCOLATE
+    topBar.BackgroundTransparency = 0.1
+    topBar.BorderSizePixel = 0
+    topBar.Parent = mainFrame
+    
+    local topBarCorner = Instance.new("UICorner")
+    topBarCorner.CornerRadius = UDim.new(0, 12)
+    topBarCorner.Parent = topBar
+    
+    local title = Instance.new("TextLabel")
+    title.Name = "Title"
+    title.Size = UDim2.new(0, 200, 0, 38)
+    title.Position = UDim2.new(0.36, 0, 0, 0)
+    title.BackgroundTransparency = 1
+    title.Text = "Crumbs Admin"
+    title.TextColor3 = OFF_WHITE
+    title.TextSize = 22
+    title.Font = Enum.Font.GothamBold
+    title.Parent = topBar
+    
+    local closeButton = Instance.new("TextButton")
+    closeButton.Name = "CloseButton"
+    closeButton.Size = UDim2.new(0, 32, 0, 32)
+    closeButton.Position = UDim2.new(1, -37, 0, 3)
+    closeButton.BackgroundTransparency = 1
+    closeButton.Text = "X"
+    closeButton.TextColor3 = OFF_WHITE
+    closeButton.TextSize = 18
+    closeButton.Font = Enum.Font.GothamBold
+    closeButton.Parent = topBar
+    
+    local tabBar = Instance.new("Frame")
+    tabBar.Name = "TabBar"
+    tabBar.Size = UDim2.new(1, -16, 0, 42)
+    tabBar.Position = UDim2.new(0, 8, 0, 46)
+    tabBar.BackgroundColor3 = MILK_CHOCOLATE
+    tabBar.BackgroundTransparency = 0.2
+    tabBar.BorderSizePixel = 1
+    tabBar.BorderColor3 = LIGHT_CHOCOLATE
+    tabBar.Parent = mainFrame
+    
+    local tabBarCorner = Instance.new("UICorner")
+    tabBarCorner.CornerRadius = UDim.new(0, 8)
+    tabBarCorner.Parent = tabBar
+    
+    local commandsTab = Instance.new("TextButton")
+    commandsTab.Name = "CommandsTab"
+    commandsTab.Size = UDim2.new(0.5, -5, 0, 36)
+    commandsTab.Position = UDim2.new(0, 4, 0, 3)
+    commandsTab.BackgroundColor3 = defaultTab == "Commands" and COOKIE_DOUGH or MILK_CHOCOLATE
+    commandsTab.BackgroundTransparency = defaultTab == "Commands" and 0.1 or 0.3
+    commandsTab.BorderSizePixel = 1
+    commandsTab.BorderColor3 = LIGHT_CHOCOLATE
+    commandsTab.Text = "Commands"
+    commandsTab.TextColor3 = defaultTab == "Commands" and CHOCOLATE or OFF_WHITE
+    commandsTab.TextSize = 16
+    commandsTab.Font = Enum.Font.GothamBold
+    commandsTab.Parent = tabBar
+    
+    local commandsTabCorner = Instance.new("UICorner")
+    commandsTabCorner.CornerRadius = UDim.new(0, 6)
+    commandsTabCorner.Parent = commandsTab
+    
+    local creditsTab = Instance.new("TextButton")
+    creditsTab.Name = "CreditsTab"
+    creditsTab.Size = UDim2.new(0.5, -5, 0, 36)
+    creditsTab.Position = UDim2.new(0.5, 1, 0, 3)
+    creditsTab.BackgroundColor3 = defaultTab == "Credits" and COOKIE_DOUGH or MILK_CHOCOLATE
+    creditsTab.BackgroundTransparency = defaultTab == "Credits" and 0.1 or 0.3
+    creditsTab.BorderSizePixel = 1
+    creditsTab.BorderColor3 = LIGHT_CHOCOLATE
+    creditsTab.Text = "Credits"
+    creditsTab.TextColor3 = defaultTab == "Credits" and CHOCOLATE or OFF_WHITE
+    creditsTab.TextSize = 16
+    creditsTab.Font = Enum.Font.GothamBold
+    creditsTab.Parent = tabBar
+    
+    local creditsTabCorner = Instance.new("UICorner")
+    creditsTabCorner.CornerRadius = UDim.new(0, 6)
+    creditsTabCorner.Parent = creditsTab
+    
+    local contentFrame = Instance.new("Frame")
+    contentFrame.Name = "ContentFrame"
+    contentFrame.Size = UDim2.new(1, -16, 1, -104)
+    contentFrame.Position = UDim2.new(0, 8, 0, 96)
+    contentFrame.BackgroundColor3 = MILK_CHOCOLATE
+    contentFrame.BackgroundTransparency = 0.3
+    contentFrame.BorderSizePixel = 1
+    contentFrame.BorderColor3 = LIGHT_CHOCOLATE
+    contentFrame.Parent = mainFrame
+    
+    local contentCorner = Instance.new("UICorner")
+    contentCorner.CornerRadius = UDim.new(0, 8)
+    contentCorner.Parent = contentFrame
+    
+    local commandsContent = Instance.new("ScrollingFrame")
+    commandsContent.Name = "CommandsContent"
+    commandsContent.Size = UDim2.new(1, 0, 1, 0)
+    commandsContent.BackgroundColor3 = MILK_CHOCOLATE
+    commandsContent.BackgroundTransparency = 0
+    commandsContent.BorderSizePixel = 0
+    commandsContent.ScrollBarThickness = 6
+    commandsContent.ScrollBarImageColor3 = COOKIE_DOUGH
+    commandsContent.Visible = (defaultTab == "Commands")
+    commandsContent.Parent = contentFrame
+    
+    local commandsLayout = Instance.new("UIListLayout")
+    commandsLayout.Parent = commandsContent
+    commandsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    commandsLayout.Padding = UDim.new(0, 5)
+    
+    local commandsPadding = Instance.new("UIPadding")
+    commandsPadding.Parent = commandsContent
+    commandsPadding.PaddingTop = UDim.new(0, 5)
+    commandsPadding.PaddingLeft = UDim.new(0, 5)
+    commandsPadding.PaddingRight = UDim.new(0, 5)
+    
+    local creditsContent = Instance.new("ScrollingFrame")
+    creditsContent.Name = "CreditsContent"
+    creditsContent.Size = UDim2.new(1, 0, 1, 0)
+    creditsContent.BackgroundColor3 = MILK_CHOCOLATE
+    creditsContent.BackgroundTransparency = 1
+    creditsContent.BorderSizePixel = 0
+    creditsContent.ScrollBarThickness = 6
+    creditsContent.ScrollBarImageColor3 = COOKIE_DOUGH
+    creditsContent.Visible = (defaultTab == "Credits")
+    creditsContent.Parent = contentFrame
+    
+    local creditsLayout = Instance.new("UIListLayout")
+    creditsLayout.Parent = creditsContent
+    creditsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    creditsLayout.Padding = UDim.new(0, 10)
+    creditsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    
+    local creditsPadding = Instance.new("UIPadding")
+    creditsPadding.Parent = creditsContent
+    creditsPadding.PaddingTop = UDim.new(0, 10)
+    creditsPadding.PaddingLeft = UDim.new(0, 10)
+    creditsPadding.PaddingRight = UDim.new(0, 10)
     
     -- Credits content
-    local CreditTitle = Instance.new("TextLabel")
-    CreditTitle.Size = UDim2.new(1, -20, 0, 40)
-    CreditTitle.BackgroundTransparency = 1
-    CreditTitle.Text = "CREDITS"
-    CreditTitle.TextColor3 = COOKIE_DOUGH
-    CreditTitle.TextTransparency = 1
-    CreditTitle.TextSize = 28
-    CreditTitle.Font = Enum.Font.GothamBold
-    CreditTitle.Parent = CreditsContent
+    local creditTitle = Instance.new("TextLabel")
+    creditTitle.Size = UDim2.new(1, -20, 0, 40)
+    creditTitle.BackgroundTransparency = 1
+    creditTitle.Text = "CREDITS"
+    creditTitle.TextColor3 = COOKIE_DOUGH
+    creditTitle.TextSize = 28
+    creditTitle.Font = Enum.Font.GothamBold
+    creditTitle.Parent = creditsContent
     
-    local CreditDivider = Instance.new("Frame")
-    CreditDivider.Size = UDim2.new(0.8, 0, 0, 2)
-    CreditDivider.Position = UDim2.new(0.1, 0, 0, 55)
-    CreditDivider.BackgroundColor3 = COOKIE_DOUGH
-    CreditDivider.BackgroundTransparency = 1
-    CreditDivider.BorderSizePixel = 0
-    CreditDivider.Parent = CreditsContent
+    local creditDivider = Instance.new("Frame")
+    creditDivider.Size = UDim2.new(0.8, 0, 0, 2)
+    creditDivider.Position = UDim2.new(0.1, 0, 0, 55)
+    creditDivider.BackgroundColor3 = COOKIE_DOUGH
+    creditDivider.BorderSizePixel = 0
+    creditDivider.Parent = creditsContent
     
-    local Credits = {
+    local credits = {
         {role = "Developer", name = "Crumbs Admin Team", desc = "Server-side admin system v3.0"},
         {role = "GUI Designer", name = "Enhanced Interface", desc = "Smooth animations and notifications"},
-        {role = "Version", name = "Crumbs Admin SS v3.0", desc = "Universal - Works in console or server"},
-        {role = "Features", name = "Complete Command Set", desc = "40+ commands with rank system"},
+        {role = "Version", name = "Crumbs Admin SS v3.0", desc = "Full server-side with client GUI"},
+        {role = "Features", name = "40+ Commands", desc = "Complete admin toolkit"},
     }
     
     local yPos = 70
-    for _, credit in ipairs(Credits) do
-        local CreditFrame = Instance.new("Frame")
-        CreditFrame.Size = UDim2.new(0.9, 0, 0, 80)
-        CreditFrame.Position = UDim2.new(0.05, 0, 0, yPos)
-        CreditFrame.BackgroundColor3 = LIGHT_CHOCOLATE
-        CreditFrame.BackgroundTransparency = 1
-        CreditFrame.BorderSizePixel = 1
-        CreditFrame.BorderColor3 = COOKIE_DOUGH
-        CreditFrame.Parent = CreditsContent
+    for _, credit in ipairs(credits) do
+        local creditFrame = Instance.new("Frame")
+        creditFrame.Size = UDim2.new(0.9, 0, 0, 80)
+        creditFrame.Position = UDim2.new(0.05, 0, 0, yPos)
+        creditFrame.BackgroundColor3 = LIGHT_CHOCOLATE
+        creditFrame.BackgroundTransparency = 0.3
+        creditFrame.BorderSizePixel = 1
+        creditFrame.BorderColor3 = COOKIE_DOUGH
+        creditFrame.Parent = creditsContent
         
-        local CreditFrameCorner = Instance.new("UICorner")
-        CreditFrameCorner.CornerRadius = UDim.new(0, 8)
-        CreditFrameCorner.Parent = CreditFrame
+        local creditFrameCorner = Instance.new("UICorner")
+        creditFrameCorner.CornerRadius = UDim.new(0, 8)
+        creditFrameCorner.Parent = creditFrame
         
-        local RoleLabel = Instance.new("TextLabel")
-        RoleLabel.Size = UDim2.new(1, -20, 0, 20)
-        RoleLabel.Position = UDim2.new(0, 10, 0, 8)
-        RoleLabel.BackgroundTransparency = 1
-        RoleLabel.Text = credit.role
-        RoleLabel.TextColor3 = COOKIE_DOUGH
-        RoleLabel.TextTransparency = 1
-        RoleLabel.TextSize = 16
-        RoleLabel.Font = Enum.Font.GothamBold
-        RoleLabel.TextXAlignment = Enum.TextXAlignment.Left
-        RoleLabel.Parent = CreditFrame
+        local roleLabel = Instance.new("TextLabel")
+        roleLabel.Size = UDim2.new(1, -20, 0, 20)
+        roleLabel.Position = UDim2.new(0, 10, 0, 8)
+        roleLabel.BackgroundTransparency = 1
+        roleLabel.Text = credit.role
+        roleLabel.TextColor3 = COOKIE_DOUGH
+        roleLabel.TextSize = 16
+        roleLabel.Font = Enum.Font.GothamBold
+        roleLabel.TextXAlignment = Enum.TextXAlignment.Left
+        roleLabel.Parent = creditFrame
         
-        local NameLabel = Instance.new("TextLabel")
-        NameLabel.Size = UDim2.new(1, -20, 0, 22)
-        NameLabel.Position = UDim2.new(0, 10, 0, 28)
-        NameLabel.BackgroundTransparency = 1
-        NameLabel.Text = credit.name
-        NameLabel.TextColor3 = OFF_WHITE
-        NameLabel.TextTransparency = 1
-        NameLabel.TextSize = 18
-        NameLabel.Font = Enum.Font.GothamBold
-        NameLabel.TextXAlignment = Enum.TextXAlignment.Left
-        NameLabel.Parent = CreditFrame
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Size = UDim2.new(1, -20, 0, 22)
+        nameLabel.Position = UDim2.new(0, 10, 0, 28)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Text = credit.name
+        nameLabel.TextColor3 = OFF_WHITE
+        nameLabel.TextSize = 18
+        nameLabel.Font = Enum.Font.GothamBold
+        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+        nameLabel.Parent = creditFrame
         
-        local DescLabel = Instance.new("TextLabel")
-        DescLabel.Size = UDim2.new(1, -20, 0, 16)
-        DescLabel.Position = UDim2.new(0, 10, 0, 52)
-        DescLabel.BackgroundTransparency = 1
-        DescLabel.Text = credit.desc
-        DescLabel.TextColor3 = CHOCOLATE
-        DescLabel.TextTransparency = 1
-        DescLabel.TextSize = 12
-        DescLabel.Font = Enum.Font.Gotham
-        DescLabel.TextXAlignment = Enum.TextXAlignment.Left
-        DescLabel.TextWrapped = true
-        DescLabel.Parent = CreditFrame
+        local descLabel = Instance.new("TextLabel")
+        descLabel.Size = UDim2.new(1, -20, 0, 16)
+        descLabel.Position = UDim2.new(0, 10, 0, 52)
+        descLabel.BackgroundTransparency = 1
+        descLabel.Text = credit.desc
+        descLabel.TextColor3 = CHOCOLATE
+        descLabel.TextSize = 12
+        descLabel.Font = Enum.Font.Gotham
+        descLabel.TextXAlignment = Enum.TextXAlignment.Left
+        descLabel.TextWrapped = true
+        descLabel.Parent = creditFrame
         
         yPos = yPos + 90
     end
     
-    local SpecialThanks = Instance.new("TextLabel")
-    SpecialThanks.Size = UDim2.new(0.9, 0, 0, 40)
-    SpecialThanks.Position = UDim2.new(0.05, 0, 0, yPos + 10)
-    SpecialThanks.BackgroundTransparency = 1
-    SpecialThanks.Text = "Crumbs Admin v3.0 - Now with enhanced GUI!"
-    SpecialThanks.TextColor3 = COOKIE_DOUGH
-    SpecialThanks.TextTransparency = 1
-    SpecialThanks.TextSize = 14
-    SpecialThanks.Font = Enum.Font.GothamBold
-    SpecialThanks.TextWrapped = true
-    SpecialThanks.Parent = CreditsContent
+    local specialThanks = Instance.new("TextLabel")
+    specialThanks.Size = UDim2.new(0.9, 0, 0, 40)
+    specialThanks.Position = UDim2.new(0.05, 0, 0, yPos + 10)
+    specialThanks.BackgroundTransparency = 1
+    specialThanks.Text = "Crumbs Admin v3.0 - Full Server-Side"
+    specialThanks.TextColor3 = COOKIE_DOUGH
+    specialThanks.TextSize = 14
+    specialThanks.Font = Enum.Font.GothamBold
+    specialThanks.TextWrapped = true
+    specialThanks.Parent = creditsContent
     
     yPos = yPos + 60
-    CreditsContent.CanvasSize = UDim2.new(0, 0, 0, yPos + 20)
+    creditsContent.CanvasSize = UDim2.new(0, 0, 0, yPos + 20)
     
     -- Commands list
     local sampleCommands = {
-        {name = "help", rank = 0, desc = "Show command list"},
+        {name = "help", rank = 0, desc = "Open this menu"},
         {name = "players", rank = 0, desc = "List all players"},
         {name = "staff", rank = 0, desc = "List online staff"},
+        {name = "rj", rank = 0, desc = "Rejoin server"},
         {name = "kill", rank = 1, desc = "Kill player"},
         {name = "punish", rank = 1, desc = "Delete character"},
         {name = "freeze", rank = 1, desc = "Freeze player"},
@@ -674,1268 +1957,208 @@ local function openDashboard(defaultTab, player)
     }
     
     for counter, cmd in ipairs(sampleCommands) do
-        local CommandFrame = Instance.new("Frame")
-        CommandFrame.Name = "Command_" .. cmd.name
-        CommandFrame.Size = UDim2.new(1, 0, 0, 60)
-        CommandFrame.BackgroundColor3 = LIGHT_CHOCOLATE
-        CommandFrame.BackgroundTransparency = 1
-        CommandFrame.BorderSizePixel = 1
-        CommandFrame.BorderColor3 = COOKIE_DOUGH
-        CommandFrame.Parent = CommandsContent
+        local commandFrame = Instance.new("Frame")
+        commandFrame.Name = "Command_" .. cmd.name
+        commandFrame.Size = UDim2.new(1, 0, 0, 60)
+        commandFrame.BackgroundColor3 = LIGHT_CHOCOLATE
+        commandFrame.BackgroundTransparency = 0.3
+        commandFrame.BorderSizePixel = 1
+        commandFrame.BorderColor3 = COOKIE_DOUGH
+        commandFrame.Parent = commandsContent
     
-        local CmdCorner = Instance.new("UICorner")
-        CmdCorner.CornerRadius = UDim.new(0, 6)
-        CmdCorner.Parent = CommandFrame
+        local cmdCorner = Instance.new("UICorner")
+        cmdCorner.CornerRadius = UDim.new(0, 6)
+        cmdCorner.Parent = commandFrame
     
-        local CommandLabel = Instance.new("TextLabel")
-        CommandLabel.Size = UDim2.new(0.5, 0, 0, 16)
-        CommandLabel.Position = UDim2.new(0, 6, 0, 3)
-        CommandLabel.BackgroundTransparency = 1
-        CommandLabel.Text = counter .. " | " .. admin.config.prefix .. cmd.name
-        CommandLabel.TextColor3 = OFF_WHITE
-        CommandLabel.TextTransparency = 1
-        CommandLabel.TextSize = 15
-        CommandLabel.Font = Enum.Font.GothamBold
-        CommandLabel.TextXAlignment = Enum.TextXAlignment.Left
-        CommandLabel.Parent = CommandFrame
+        local commandLabel = Instance.new("TextLabel")
+        commandLabel.Size = UDim2.new(0.5, 0, 0, 16)
+        commandLabel.Position = UDim2.new(0, 6, 0, 3)
+        commandLabel.BackgroundTransparency = 1
+        commandLabel.Text = counter .. " | " .. prefix .. cmd.name
+        commandLabel.TextColor3 = OFF_WHITE
+        commandLabel.TextSize = 15
+        commandLabel.Font = Enum.Font.GothamBold
+        commandLabel.TextXAlignment = Enum.TextXAlignment.Left
+        commandLabel.Parent = commandFrame
     
-        local DescLabel = Instance.new("TextLabel")
-        DescLabel.Size = UDim2.new(1, -12, 0, 22)
-        DescLabel.Position = UDim2.new(0, 6, 0, 22)
-        DescLabel.BackgroundTransparency = 1
-        DescLabel.Text = "Rank required: " .. admin.rankNames[cmd.rank] .. " (" .. cmd.rank .. ") - " .. cmd.desc
-        DescLabel.TextColor3 = OFF_WHITE
-        DescLabel.TextTransparency = 1
-        DescLabel.TextSize = 12
-        DescLabel.Font = Enum.Font.Gotham
-        DescLabel.TextXAlignment = Enum.TextXAlignment.Left
-        DescLabel.TextWrapped = true
-        DescLabel.Parent = CommandFrame
+        local descLabel = Instance.new("TextLabel")
+        descLabel.Size = UDim2.new(1, -12, 0, 22)
+        descLabel.Position = UDim2.new(0, 6, 0, 22)
+        descLabel.BackgroundTransparency = 1
+        descLabel.Text = "Rank: " .. (rankNames[cmd.rank] or "User") .. " (" .. cmd.rank .. ") - " .. cmd.desc
+        descLabel.TextColor3 = OFF_WHITE
+        descLabel.TextSize = 12
+        descLabel.Font = Enum.Font.Gotham
+        descLabel.TextXAlignment = Enum.TextXAlignment.Left
+        descLabel.TextWrapped = true
+        descLabel.Parent = commandFrame
         
-        local UsageLabel = Instance.new("TextLabel")
-        UsageLabel.Size = UDim2.new(1, -12, 0, 10)
-        UsageLabel.Position = UDim2.new(0, 6, 0, 48)
-        UsageLabel.BackgroundTransparency = 1
-        UsageLabel.Text = "Usage: " .. admin.config.prefix .. cmd.name .. " <player>"
-        UsageLabel.TextColor3 = COOKIE_DOUGH
-        UsageLabel.TextTransparency = 1
-        UsageLabel.TextSize = 10
-        UsageLabel.Font = Enum.Font.Gotham
-        UsageLabel.TextXAlignment = Enum.TextXAlignment.Left
-        UsageLabel.Parent = CommandFrame
+        local usageLabel = Instance.new("TextLabel")
+        usageLabel.Size = UDim2.new(1, -12, 0, 10)
+        usageLabel.Position = UDim2.new(0, 6, 0, 48)
+        usageLabel.BackgroundTransparency = 1
+        usageLabel.Text = "Usage: " .. prefix .. cmd.name .. " <player>"
+        usageLabel.TextColor3 = COOKIE_DOUGH
+        usageLabel.TextSize = 10
+        usageLabel.Font = Enum.Font.Gotham
+        usageLabel.TextXAlignment = Enum.TextXAlignment.Left
+        usageLabel.Parent = commandFrame
     end
     
-    CommandsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        CommandsContent.CanvasSize = UDim2.new(0, 0, 0, CommandsLayout.AbsoluteContentSize.Y + 10)
+    commandsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        commandsContent.CanvasSize = UDim2.new(0, 0, 0, commandsLayout.AbsoluteContentSize.Y + 10)
     end)
-    CommandsContent.CanvasSize = UDim2.new(0, 0, 0, CommandsLayout.AbsoluteContentSize.Y + 10)
+    commandsContent.CanvasSize = UDim2.new(0, 0, 0, commandsLayout.AbsoluteContentSize.Y + 10)
     
+    -- Tab switching
     local function switchTab(tabName)
         if tabName == "Commands" then
-            TweenService:Create(CommandsTab, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            TweenService:Create(commandsTab, TweenInfo.new(0.3), {
                 BackgroundColor3 = COOKIE_DOUGH,
                 BackgroundTransparency = 0.1,
                 TextColor3 = CHOCOLATE
             }):Play()
-            
-            TweenService:Create(CreditsTab, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            TweenService:Create(creditsTab, TweenInfo.new(0.3), {
                 BackgroundColor3 = MILK_CHOCOLATE,
                 BackgroundTransparency = 0.3,
                 TextColor3 = OFF_WHITE
             }):Play()
-            
-            CommandsContent.Visible = true
-            CreditsContent.Visible = false
+            commandsContent.Visible = true
+            creditsContent.Visible = false
         else
-            TweenService:Create(CreditsTab, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            TweenService:Create(creditsTab, TweenInfo.new(0.3), {
                 BackgroundColor3 = COOKIE_DOUGH,
                 BackgroundTransparency = 0.1,
                 TextColor3 = CHOCOLATE
             }):Play()
-            
-            TweenService:Create(CommandsTab, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            TweenService:Create(commandsTab, TweenInfo.new(0.3), {
                 BackgroundColor3 = MILK_CHOCOLATE,
                 BackgroundTransparency = 0.3,
                 TextColor3 = OFF_WHITE
             }):Play()
-            
-            CommandsContent.Visible = false
-            CreditsContent.Visible = true
+            commandsContent.Visible = false
+            creditsContent.Visible = true
         end
     end
     
-    CommandsTab.MouseButton1Click:Connect(function()
+    commandsTab.MouseButton1Click:Connect(function()
         switchTab("Commands")
     end)
     
-    CreditsTab.MouseButton1Click:Connect(function()
+    creditsTab.MouseButton1Click:Connect(function()
         switchTab("Credits")
     end)
     
-    -- Dragging functionality
+    -- Dragging
     local dragging = false
     local dragStart = nil
     local startPos = nil
     local dragTween = nil
-    local connectionMove = nil
-    local connectionEnd = nil
     
-    local function updateDrag(input)
-        if dragging and dragStart and startPos then
+    topBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = mainFrame.Position
+        end
+    end)
+    
+    topBar.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
             local delta = input.Position - dragStart
             local newPos = UDim2.new(
-                startPos.X.Scale, 
+                startPos.X.Scale,
                 startPos.X.Offset + delta.X,
                 startPos.Y.Scale,
                 startPos.Y.Offset + delta.Y
             )
             
-            if dragTween then
-                dragTween:Cancel()
-            end
-            
-            dragTween = TweenService:Create(MainFrame, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                Position = newPos
-            })
+            if dragTween then dragTween:Cancel() end
+            dragTween = TweenService:Create(mainFrame, TweenInfo.new(0.08), {Position = newPos})
             dragTween:Play()
         end
-    end
-    
-    TopBar.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = MainFrame.Position
-            
-            if dragTween then
-                dragTween:Cancel()
-            end
-            
-            connectionMove = input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                    if connectionMove then
-                        connectionMove:Disconnect()
-                        connectionMove = nil
-                    end
-                end
-            end)
-            
-            connectionEnd = UserInputService.InputChanged:Connect(function(input)
-                if (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) and dragging then
-                    updateDrag(input)
-                end
-            end)
-        end
     end)
     
-    TopBar.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+    topBar.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = false
-            if connectionMove then
-                connectionMove:Disconnect()
-                connectionMove = nil
-            end
-            if connectionEnd then
-                connectionEnd:Disconnect()
-                connectionEnd = nil
-            end
         end
     end)
     
-    local function cleanup()
-        dragging = false
-        if connectionMove then
-            connectionMove:Disconnect()
-            connectionMove = nil
-        end
-        if connectionEnd then
-            connectionEnd:Disconnect()
-            connectionEnd = nil
-        end
-        if dragTween then
-            dragTween:Cancel()
-            dragTween = nil
-        end
-    end
-    
-    ScreenGui.Destroying:Connect(cleanup)
-    
-    CloseButton.MouseButton1Click:Connect(function()
-        local fadeOut1 = TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            BackgroundTransparency = 1
-        })
-        local fadeOut2 = TweenService:Create(TopBar, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            BackgroundTransparency = 1
-        })
-        local fadeOut3 = TweenService:Create(Title, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            TextTransparency = 1
-        })
-        local fadeOut4 = TweenService:Create(CloseButton, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            TextTransparency = 1
-        })
-        local fadeOut5 = TweenService:Create(TabBar, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            BackgroundTransparency = 1
-        })
-        local fadeOut6 = TweenService:Create(CommandsTab, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            BackgroundTransparency = 1,
-            TextTransparency = 1
-        })
-        local fadeOut7 = TweenService:Create(CreditsTab, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            BackgroundTransparency = 1,
-            TextTransparency = 1
-        })
-        
-        local fadeOut8 = TweenService:Create(ContentFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            BackgroundTransparency = 1
-        })
-        fadeOut8:Play()
-        
-        local contentFades = {}
-        for _, v in ipairs(ContentFrame:GetDescendants()) do
-            if v:IsA("TextLabel") or v:IsA("TextButton") then
-                local tween = TweenService:Create(v, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                    TextTransparency = 1
-                })
-                table.insert(contentFades, tween)
-                tween:Play()
-            elseif v:IsA("Frame") or v:IsA("ScrollingFrame") then
-                local tween = TweenService:Create(v, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                    BackgroundTransparency = 1
-                })
-                table.insert(contentFades, tween)
-                tween:Play()
-            end
-        end
-        
-        fadeOut1:Play()
-        fadeOut2:Play()
-        fadeOut3:Play()
-        fadeOut4:Play()
-        fadeOut5:Play()
-        fadeOut6:Play()
-        fadeOut7:Play()
-        
+    closeButton.MouseButton1Click:Connect(function()
+        TweenService:Create(mainFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
+        TweenService:Create(topBar, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
+        TweenService:Create(title, TweenInfo.new(0.3), {TextTransparency = 1}):Play()
+        TweenService:Create(closeButton, TweenInfo.new(0.3), {TextTransparency = 1}):Play()
         task.wait(0.15)
-        ScreenGui:Destroy()
-        admin.currentDashboard = nil
+        dashboardGui:Destroy()
+        currentDashboard = nil
     end)
-    
-    -- Initial fade in animations
-    CommandsContent.BackgroundTransparency = 1
-    for _, v in ipairs(CommandsContent:GetDescendants()) do
-        if v:IsA("TextLabel") or v:IsA("TextButton") then
-            v.TextTransparency = 1
-        elseif v:IsA("Frame") then
-            v.BackgroundTransparency = 1
-        end
-    end
-    
-    CreditsContent.BackgroundTransparency = 1
-    for _, v in ipairs(CreditsContent:GetDescendants()) do
-        if v:IsA("TextLabel") or v:IsA("TextButton") then
-            v.TextTransparency = 1
-        elseif v:IsA("Frame") then
-            v.BackgroundTransparency = 1
-        end
-    end
-    
-    task.wait(0.1)
-    
-    local fadeIn1 = TweenService:Create(MainFrame, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-        BackgroundTransparency = 0.05
-    })
-    local fadeIn2 = TweenService:Create(TopBar, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-        BackgroundTransparency = 0.1
-    })
-    local fadeIn3 = TweenService:Create(Title, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-        TextTransparency = 0
-    })
-    local fadeIn4 = TweenService:Create(CloseButton, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-        TextTransparency = 0
-    })
-    local fadeIn5 = TweenService:Create(TabBar, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-        BackgroundTransparency = 0.2
-    })
-    
-    fadeIn1:Play()
-    fadeIn2:Play()
-    fadeIn3:Play()
-    fadeIn4:Play()
-    fadeIn5:Play()
-    
-    local fadeIn6 = TweenService:Create(CommandsTab, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-        BackgroundTransparency = (defaultTab == "Commands" and 0.1 or 0.3),
-        TextTransparency = 0
-    })
-    local fadeIn7 = TweenService:Create(CreditsTab, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-        BackgroundTransparency = (defaultTab == "Credits" and 0.1 or 0.3),
-        TextTransparency = 0
-    })
-    
-    fadeIn6:Play()
-    fadeIn7:Play()
-    
-    local fadeIn8 = TweenService:Create(ContentFrame, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-        BackgroundTransparency = 0.3
-    })
-    fadeIn8:Play()
-    
-    if defaultTab == "Commands" then
-        CommandsTab.BackgroundColor3 = COOKIE_DOUGH
-        CreditsTab.BackgroundColor3 = MILK_CHOCOLATE
-    else
-        CommandsTab.BackgroundColor3 = MILK_CHOCOLATE
-        CreditsTab.BackgroundColor3 = COOKIE_DOUGH
-    end
-    
-    task.wait(0.1)
-    for _, cmdFrame in ipairs(CommandsContent:GetChildren()) do
-        if cmdFrame:IsA("Frame") then
-            local frameFade = TweenService:Create(cmdFrame, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                BackgroundTransparency = 0.3
-            })
-            frameFade:Play()
-            
-            for _, v in ipairs(cmdFrame:GetDescendants()) do
-                if v:IsA("TextLabel") then
-                    local textFade = TweenService:Create(v, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                        TextTransparency = 0
-                    })
-                    textFade:Play()
-                end
-            end
-            task.wait(0.03)
-        end
-    end
-    
-    task.wait(0.1)
-    for _, v in ipairs(CreditsContent:GetDescendants()) do
-        if v:IsA("TextLabel") then
-            local textFade = TweenService:Create(v, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                TextTransparency = 0
-            })
-            textFade:Play()
-        elseif v:IsA("Frame") and v ~= CreditsContent then
-            local frameFade = TweenService:Create(v, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                BackgroundTransparency = 0.3
-            })
-            frameFade:Play()
-        end
-        task.wait(0.02)
-    end
-end
+end)
 
--- Command bar GUI
-local function createCommandBar()
-    local player = Players.LocalPlayer
-    if not player then return end
-    
-    local PlayerGui = player:FindFirstChild("PlayerGui")
-    if not PlayerGui then return end
-    
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "CmdBarGui"
-    screenGui.Parent = PlayerGui
-    screenGui.ResetOnSpawn = false
-    screenGui.IgnoreGuiInset = true
-    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+-- Welcome message
+task.wait(1)
+notificationRemote:FireServer("ClientLoaded")
+]]
 
-    local cmdBarFrame = Instance.new("Frame")
-    cmdBarFrame.Size = UDim2.new(0.5, 0, 0.08, 0)
-    cmdBarFrame.Position = UDim2.new(0.25, 0, 1.2, 0)
-    cmdBarFrame.BackgroundTransparency = 1
-    cmdBarFrame.Visible = false
-    cmdBarFrame.Parent = screenGui
-
-    local cmdBarTextBox = Instance.new("TextBox")
-    cmdBarTextBox.Size = UDim2.new(1, -4, 1, -4)
-    cmdBarTextBox.Position = UDim2.new(0, 2, 0, 2)
-    cmdBarTextBox.BackgroundColor3 = MILK_CHOCOLATE
-    cmdBarTextBox.BackgroundTransparency = 0
-    cmdBarTextBox.TextColor3 = WHITE
-    cmdBarTextBox.TextSize = 18
-    cmdBarTextBox.Font = Enum.Font.SourceSans
-    cmdBarTextBox.PlaceholderText = "Enter command... ( " .. admin.config.prefix .. " )"
-    cmdBarTextBox.PlaceholderColor3 = COOKIE_DOUGH
-    cmdBarTextBox.ClearTextOnFocus = false
-    cmdBarTextBox.Text = ""
-    cmdBarTextBox.Parent = cmdBarFrame
-
-    local textBoxCorner = Instance.new("UICorner")
-    textBoxCorner.CornerRadius = UDim.new(0, 10)
-    textBoxCorner.Parent = cmdBarTextBox
-    
-    local hintLabel = Instance.new("TextLabel")
-    hintLabel.Size = UDim2.new(0, 280, 0, 20)
-    hintLabel.Position = UDim2.new(0, 10, 0, 10)
-    hintLabel.BackgroundTransparency = 1
-    hintLabel.TextColor3 = CHOCOLATE
-    hintLabel.Text = "Crumbs Admin is running..."
-    hintLabel.TextSize = 13
-    hintLabel.Font = Enum.Font.SourceSans
-    hintLabel.TextXAlignment = Enum.TextXAlignment.Left
-    hintLabel.Parent = screenGui
-    
-    local function animateTextBox(show)
-        if show then
-            cmdBarFrame.Visible = true
-            cmdBarFrame.Position = UDim2.new(0.25, 0, 1.2, 0)
-            cmdBarTextBox:CaptureFocus()
-            
-            local tween = TweenService:Create(cmdBarFrame, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
-                Position = UDim2.new(0.25, 0, 0.85, 0)
-            })
-            tween:Play()
+-- Send client script to players
+local function setupClient(player)
+    -- Check if player is banned
+    if bannedPlayers[player.UserId] then
+        local banData = bannedPlayers[player.UserId]
+        if banData.expiry and os.time() > banData.expiry then
+            bannedPlayers[player.UserId] = nil
         else
-            local tween = TweenService:Create(cmdBarFrame, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-                Position = UDim2.new(0.25, 0, 1.2, 0)
-            })
-            tween:Play()
-            
-            tween.Completed:Connect(function()
-                cmdBarFrame.Visible = false
-            end)
+            local durationText = banData.expiry and " for " .. math.floor((banData.expiry - os.time()) / 60) .. " minutes" or " permanently"
+            player:Kick("You are banned" .. durationText .. "\nReason: " .. banData.reason)
+            return
         end
     end
+    
+    -- Create and parent client script
+    local module = Instance.new("LocalScript")
+    module.Name = "CrumbsClient"
+    module.Source = clientScript
+    module.Parent = player:WaitForChild("PlayerGui")
+    
+    -- Send welcome notification
+    task.wait(1)
+    notify(player, "Crumbs Admin", "Welcome! Your rank: " .. RANK_NAMES[getPlayerRank(player)], 4)
+end
 
-    UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if not gameProcessed and input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Enum.KeyCode.Comma then
-            if cmdBarFrame.Visible then
-                animateTextBox(false)
-            else
-                animateTextBox(true)
-            end
-        end
-    end)
+-- Player connection handling
+Players.PlayerAdded:Connect(setupClient)
 
-    cmdBarTextBox.FocusLost:Connect(function(enterPressed)
-        if enterPressed then
-            local commandText = cmdBarTextBox.Text
-            cmdBarTextBox.Text = ""
-            animateTextBox(false)
-            
-            -- Process command (will be handled by command handler)
-            if commandText ~= "" then
-                issueCommand(commandText, player)
-            end
-        else
-            animateTextBox(false)
-        end
+for _, player in ipairs(Players:GetPlayers()) do
+    task.spawn(function()
+        setupClient(player)
     end)
 end
 
--- Command handling
-local commands = {}
-local commandAliases = {}
-local commandInfo = {}
-
-local function AddCommand(name, desc, args, minRank, onCalled, aliases)
-    local tmpTbl = {
-        ["Name"] = name,
-        ["Description"] = desc,
-        ["Arguments"] = args,
-        ["MinRank"] = minRank,
-        ["OnCalled"] = onCalled
-    }
-    table.insert(commands, tmpTbl)
-    
-    commandInfo[name] = {
-        name = name,
-        aliases = aliases or {},
-        desc = desc,
-        minRank = minRank,
-        usage = admin.config.prefix .. name .. (args and #args > 0 and " " .. table.concat(args, " ") or ""),
-    }
-    
-    if aliases then
-        for _, alias in ipairs(aliases) do
-            commandAliases[alias] = name
+Players.PlayerRemoving:Connect(function(player)
+    -- Clean up data
+    if activePunishments[player.UserId] then
+        activePunishments[player.UserId] = nil
+        if activePunishments[player.UserId .. "_conn"] then
+            activePunishments[player.UserId .. "_conn"]:Disconnect()
         end
     end
-end
-
-local function findPlayer(input, caller)
-    if not input or input == "" then return nil end
-    
-    input = string.lower(input)
-    
-    if input == "me" then
-        return caller
-    end
-    
-    if input == "all" then
-        return Players:GetPlayers()
-    end
-    
-    if input == "others" then
-        local others = {}
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= caller then
-                table.insert(others, plr)
-            end
-        end
-        return others
-    end
-    
-    if input == "random" then
-        local eligible = {}
-        for _, plr in ipairs(Players:GetPlayers()) do
-            table.insert(eligible, plr)
-        end
-        return #eligible > 0 and {eligible[math.random(1, #eligible)]} or {}
-    end
-    
-    if input == "admins" then
-        local admins = {}
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if getRank(plr) >= 1 then
-                table.insert(admins, plr)
-            end
-        end
-        return admins
-    end
-    
-    if input == "nonadmins" then
-        local users = {}
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if getRank(plr) == 0 then
-                table.insert(users, plr)
-            end
-        end
-        return users
-    end
-    
-    -- Find by name
-    local results = {}
-    for _, player in ipairs(Players:GetPlayers()) do
-        if string.find(string.lower(player.Name), input, 1, true) or 
-           string.find(string.lower(player.DisplayName), input, 1, true) then
-            table.insert(results, player)
+    if activeLoopKills[player.UserId] then
+        activeLoopKills[player.UserId] = nil
+        if activeLoopKills[player.UserId .. "_conn"] then
+            activeLoopKills[player.UserId .. "_conn"]:Disconnect()
         end
     end
-    return #results > 0 and results or nil
-end
-
-local function issueCommand(commandText, caller)
-    if not caller then caller = Players.LocalPlayer end
-    if not caller then return end
-    
-    if string.sub(commandText, 1, 1) == admin.config.prefix then
-        commandText = string.sub(commandText, 2)
-    end
-
-    if commandText:lower() == "cmds" or commandText:lower() == "commands" or commandText:lower() == "help" or commandText:lower() == "menu" then
-        openDashboard("Commands", caller)
-        return
-    end
-
-    local commandFound = false
-    local commandSplit = string.split(commandText, " ")
-    local cmdName = string.lower(table.remove(commandSplit, 1))
-    
-    local realCommandName = commandAliases[cmdName]
-    if realCommandName then
-        cmdName = realCommandName
-    end
-
-    local callerRank = getRank(caller)
-
-    for _, cmd in ipairs(commands) do
-        if cmdName == cmd.Name then
-            commandFound = true
-            
-            if callerRank < cmd.MinRank then
-                notify(caller, "Crumbs Admin", "You need rank " .. admin.rankNames[cmd.MinRank] .. " (" .. cmd.MinRank .. ") to use this command.", 3)
-                return
-            end
-            
-            -- Handle multi-target with commas
-            if #commandSplit > 0 and string.find(commandSplit[1], ",") then
-                local targetsString = table.remove(commandSplit, 1)
-                local targetNames = string.split(targetsString, ",")
-                
-                for _, name in ipairs(targetNames) do
-                    name = name:gsub("^%s+", ""):gsub("%s+$", "")
-                    local targets = findPlayer(name, caller)
-                    
-                    if targets then
-                        if type(targets) ~= "table" then targets = {targets} end
-                        for _, target in ipairs(targets) do
-                            local args = {target.Name, unpack(commandSplit)}
-                            local success, err = pcall(cmd.OnCalled, caller, unpack(args))
-                            if not success then
-                                notify(caller, "Crumbs Admin", "Command error: " .. tostring(err), 5)
-                            end
-                        end
-                    end
-                    task.wait(0.05)
-                end
-            else
-                local success, err = pcall(cmd.OnCalled, caller, unpack(commandSplit))
-                if not success then
-                    notify(caller, "Crumbs Admin", "Command error: " .. tostring(err), 5)
-                end
-            end
-            break
-        end
-    end
-    
-    if not commandFound and commandText ~= "" then
-        notify(caller, "Crumbs Admin", "Unknown command: " .. cmdName .. ". Type " .. admin.config.prefix .. "help for commands.", 3)
-    end
-end
-
--- Setup chat handler
-local function setupCommandHandler()
-    local player = Players.LocalPlayer
-    if not player then return end
-    
-    if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
-        local textChatCommands = TextChatService:FindFirstChild("TextChatCommands")
-        if not textChatCommands then
-            textChatCommands = Instance.new("Folder")
-            textChatCommands.Name = "TextChatCommands"
-            textChatCommands.Parent = TextChatService
-        end
-        
-        local cmdTrigger = textChatCommands:FindFirstChild("CmdTrigger")
-        if cmdTrigger then cmdTrigger:Destroy() end
-        
-        cmdTrigger = Instance.new("TextChatCommand")
-        cmdTrigger.Name = "CmdTrigger"
-        cmdTrigger.TriggerTexts = {admin.config.prefix}
-        cmdTrigger.Parent = textChatCommands
-        
-        cmdTrigger.Callbacked:Connect(function(_, messageText)
-            if string.sub(messageText, 1, 1) == admin.config.prefix then
-                issueCommand(messageText, player)
-            end
-        end)
-        
-        TextChatService.OnIncomingMessage = function(message)
-            if message.TextSource and message.TextSource.UserId == player.UserId then
-                if string.sub(message.Text, 1, 1) == admin.config.prefix then
-                    return Enum.IncomingMessageResponse.Cancel
-                end
-            end
-            return Enum.IncomingMessageResponse.Default
-        end
-    else
-        player.Chatted:Connect(function(message)
-            if string.sub(message, 1, 1) == admin.config.prefix then
-                issueCommand(message, player)
-            end
-        end)
-    end
-end
-
--- COMMAND DEFINITIONS
--- Rank 0 Commands
-AddCommand("help", "Show command list", {}, 0, function(caller)
-    openDashboard("Commands", caller)
-end, {"commands", "cmds", "menu"})
-
-AddCommand("players", "List all players", {}, 0, function(caller)
-    local list = {}
-    for _, player in ipairs(Players:GetPlayers()) do
-        table.insert(list, player.Name)
-    end
-    notify(caller, "Crumbs Admin", "Players (" .. #list .. "): " .. table.concat(list, ", "), 5)
-end, {"list", "online"})
-
-AddCommand("staff", "List online staff", {}, 0, function(caller)
-    local list = {}
-    for _, player in ipairs(Players:GetPlayers()) do
-        local rank = getRank(player)
-        if rank > 0 then
-            table.insert(list, player.Name .. " (" .. admin.rankNames[rank] .. ")")
-        end
-    end
-    if #list > 0 then
-        notify(caller, "Crumbs Admin", "Online staff: " .. table.concat(list, ", "), 5)
-    else
-        notify(caller, "Crumbs Admin", "No staff online.", 3)
-    end
-end, {"admins"})
-
-AddCommand("serverinfo", "Show server information", {}, 0, function(caller)
-    local info = string.format(
-        "Server Info:\nPlayers: %d/%d\nPlace ID: %d\nJob ID: %s",
-        #Players:GetPlayers(),
-        Players.MaxPlayers,
-        game.PlaceId,
-        game.JobId:sub(1, 8)
-    )
-    notify(caller, "Crumbs Admin", info, 5)
-end, {"info", "si"})
-
-AddCommand("rj", "Rejoin the server", {}, 0, function(caller)
-    notify(caller, "Crumbs Admin", "Rejoining...", 2)
-    task.wait(1)
-    if #Players:GetPlayers() <= 1 then
-        caller:Kick("Rejoining...")
-        task.wait()
-        TeleportService:Teleport(game.PlaceId, caller)
-    else
-        TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, caller)
-    end
-end, {"rejoin", "reconnect"})
-
--- Rank 1 Commands
-AddCommand("kill", "Kill a player", {"<player>"}, 1, function(caller, target)
-    local targets = findPlayer(target, caller)
-    if not targets then notify(caller, "Crumbs Admin", "Player not found.", 3) return end
-    
-    if type(targets) ~= "table" then targets = {targets} end
-    
-    local count = 0
-    for _, player in ipairs(targets) do
-        local head = getPlayerHead(player)
-        if head then
-            head:Destroy()
-            count = count + 1
-        end
-    end
-    
-    notify(caller, "Crumbs Admin", "Killed " .. count .. " player(s).", 3)
-end, {"k", "slay"})
-
-AddCommand("punish", "Delete a player's character", {"<player>"}, 1, function(caller, target)
-    local targets = findPlayer(target, caller)
-    if not targets then notify(caller, "Crumbs Admin", "Player not found.", 3) return end
-    
-    if type(targets) ~= "table" then targets = {targets} end
-    
-    local count = 0
-    for _, player in ipairs(targets) do
-        if player.Character then
-            player.Character:Destroy()
-            count = count + 1
-        end
-    end
-    
-    notify(caller, "Crumbs Admin", "Punished " .. count .. " player(s).", 3)
-end, {"p", "deletechar"})
-
-AddCommand("freeze", "Freeze a player", {"<player>"}, 1, function(caller, target)
-    local targets = findPlayer(target, caller)
-    if not targets then notify(caller, "Crumbs Admin", "Player not found.", 3) return end
-    
-    if type(targets) ~= "table" then targets = {targets} end
-    
-    local count = 0
-    for _, player in ipairs(targets) do
-        if player.Character then
-            for _, part in ipairs(getPlayerParts(player)) do
-                part.Anchored = true
-            end
-            admin.frozen[player.UserId] = true
-            count = count + 1
-        end
-    end
-    
-    notify(caller, "Crumbs Admin", "Frozen " .. count .. " player(s).", 3)
-end, {"fz", "anchor"})
-
-AddCommand("unfreeze", "Unfreeze a player", {"<player>"}, 1, function(caller, target)
-    local targets = findPlayer(target, caller)
-    if not targets then notify(caller, "Crumbs Admin", "Player not found.", 3) return end
-    
-    if type(targets) ~= "table" then targets = {targets} end
-    
-    local count = 0
-    for _, player in ipairs(targets) do
-        if player.Character then
-            for _, part in ipairs(getPlayerParts(player)) do
-                part.Anchored = false
-            end
-            admin.frozen[player.UserId] = nil
-            count = count + 1
-        end
-    end
-    
-    notify(caller, "Crumbs Admin", "Unfrozen " .. count .. " player(s).", 3)
-end, {"ufz", "unanchor"})
-
-AddCommand("noclip", "Disable collision for a player", {"<player>"}, 1, function(caller, target)
-    local targets = findPlayer(target, caller)
-    if not targets then notify(caller, "Crumbs Admin", "Player not found.", 3) return end
-    
-    if type(targets) ~= "table" then targets = {targets} end
-    
-    local count = 0
-    for _, player in ipairs(targets) do
-        if player.Character then
-            for _, part in ipairs(getPlayerParts(player)) do
-                part.CanCollide = false
-            end
-            count = count + 1
-        end
-    end
-    
-    notify(caller, "Crumbs Admin", "Noclip enabled for " .. count .. " player(s).", 3)
-end, {"nc", "ghost"})
-
-AddCommand("clip", "Enable collision for a player", {"<player>"}, 1, function(caller, target)
-    local targets = findPlayer(target, caller)
-    if not targets then notify(caller, "Crumbs Admin", "Player not found.", 3) return end
-    
-    if type(targets) ~= "table" then targets = {targets} end
-    
-    local count = 0
-    for _, player in ipairs(targets) do
-        if player.Character then
-            for _, part in ipairs(getPlayerParts(player)) do
-                part.CanCollide = true
-            end
-            count = count + 1
-        end
-    end
-    
-    notify(caller, "Crumbs Admin", "Clip enabled for " .. count .. " player(s).", 3)
-end, {"c", "collide"})
-
-AddCommand("void", "Send a player to the void", {"<player>"}, 1, function(caller, target)
-    local targets = findPlayer(target, caller)
-    if not targets then notify(caller, "Crumbs Admin", "Player not found.", 3) return end
-    
-    if type(targets) ~= "table" then targets = {targets} end
-    
-    local count = 0
-    for _, player in ipairs(targets) do
-        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            player.Character.HumanoidRootPart.CFrame = CFrame.new(0, -5000, 0)
-            count = count + 1
-        end
-    end
-    
-    notify(caller, "Crumbs Admin", "Sent " .. count .. " player(s) to the void.", 3)
-end, {"v", "underworld"})
-
-AddCommand("skydive", "Launch a player into the sky", {"<player>", "[height]"}, 1, function(caller, target, height)
-    local targets = findPlayer(target, caller)
-    if not targets then notify(caller, "Crumbs Admin", "Player not found.", 3) return end
-    
-    local launchHeight = tonumber(height) or 1000
-    if launchHeight < 1000 then launchHeight = 1000 end
-    
-    if type(targets) ~= "table" then targets = {targets} end
-    
-    local count = 0
-    for _, player in ipairs(targets) do
-        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            local pos = player.Character.HumanoidRootPart.Position
-            player.Character.HumanoidRootPart.CFrame = CFrame.new(pos.X, pos.Y + launchHeight, pos.Z)
-            count = count + 1
-        end
-    end
-    
-    notify(caller, "Crumbs Admin", "Launched " .. count .. " player(s) " .. launchHeight .. " studs.", 3)
-end, {"sky", "launch"})
-
-AddCommand("tp", "Teleport a player to another player", {"<player>", "<destination>"}, 1, function(caller, target, destination)
-    local destPlayer = findPlayer(destination, caller)
-    if not destPlayer then notify(caller, "Crumbs Admin", "Destination not found.", 3) return end
-    if type(destPlayer) == "table" then destPlayer = destPlayer[1] end
-    
-    if not destPlayer.Character or not destPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        notify(caller, "Crumbs Admin", "Destination has no character.", 3)
-        return
-    end
-    
-    local destPos = destPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, -5)
-    
-    local targets = findPlayer(target, caller)
-    if not targets then notify(caller, "Crumbs Admin", "Target not found.", 3) return end
-    
-    if type(targets) ~= "table" then targets = {targets} end
-    
-    local count = 0
-    for _, player in ipairs(targets) do
-        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            player.Character.HumanoidRootPart.CFrame = destPos
-            count = count + 1
-        end
-    end
-    
-    notify(caller, "Crumbs Admin", "Teleported " .. count .. " player(s) to " .. destPlayer.Name, 3)
-end, {"teleport", "goto"})
-
-AddCommand("bring", "Bring a player to you", {"<player>"}, 1, function(caller, target)
-    if not caller.Character or not caller.Character:FindFirstChild("HumanoidRootPart") then
-        notify(caller, "Crumbs Admin", "You have no character.", 3)
-        return
-    end
-    
-    local myPos = caller.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, -5)
-    
-    local targets = findPlayer(target, caller)
-    if not targets then notify(caller, "Crumbs Admin", "Player not found.", 3) return end
-    
-    if type(targets) ~= "table" then targets = {targets} end
-    
-    local count = 0
-    for _, player in ipairs(targets) do
-        if player ~= caller and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            player.Character.HumanoidRootPart.CFrame = myPos
-            count = count + 1
-        end
-    end
-    
-    notify(caller, "Crumbs Admin", "Brought " .. count .. " player(s) to you.", 3)
-end, {"b", "fetch"})
-
-AddCommand("invisible", "Make a player invisible", {"<player>"}, 1, function(caller, target)
-    local targets = findPlayer(target, caller)
-    if not targets then notify(caller, "Crumbs Admin", "Player not found.", 3) return end
-    
-    if type(targets) ~= "table" then targets = {targets} end
-    
-    local count = 0
-    for _, player in ipairs(targets) do
-        if player.Character then
-            for _, part in ipairs(getPlayerParts(player)) do
-                part.Transparency = 1
-                for _, child in ipairs(part:GetChildren()) do
-                    if child:IsA("Decal") or child:IsA("Texture") then
-                        child.Transparency = 1
-                    end
-                end
-            end
-            admin.invisible[player.UserId] = true
-            count = count + 1
-        end
-    end
-    
-    notify(caller, "Crumbs Admin", "Made " .. count .. " player(s) invisible.", 3)
-end, {"inv", "hide"})
-
-AddCommand("visible", "Make a player visible", {"<player>"}, 1, function(caller, target)
-    local targets = findPlayer(target, caller)
-    if not targets then notify(caller, "Crumbs Admin", "Player not found.", 3) return end
-    
-    if type(targets) ~= "table" then targets = {targets} end
-    
-    local count = 0
-    for _, player in ipairs(targets) do
-        if player.Character then
-            for _, part in ipairs(getPlayerParts(player)) do
-                part.Transparency = 0
-                for _, child in ipairs(part:GetChildren()) do
-                    if child:IsA("Decal") or child:IsA("Texture") then
-                        child.Transparency = 0
-                    end
-                end
-            end
-            admin.invisible[player.UserId] = nil
-            count = count + 1
-        end
-    end
-    
-    notify(caller, "Crumbs Admin", "Made " .. count .. " player(s) visible.", 3)
-end, {"vis", "show"})
-
-AddCommand("mute", "Mute a player", {"<player>"}, 1, function(caller, target)
-    local targets = findPlayer(target, caller)
-    if not targets then notify(caller, "Crumbs Admin", "Player not found.", 3) return end
-    
-    if type(targets) ~= "table" then targets = {targets} end
-    
-    for _, player in ipairs(targets) do
-        admin.muted[player.UserId] = true
-    end
-    
-    notify(caller, "Crumbs Admin", "Muted " .. #targets .. " player(s).", 3)
-end, {"silence"})
-
-AddCommand("unmute", "Unmute a player", {"<player>"}, 1, function(caller, target)
-    if target:lower() == "all" then
-        admin.muted = {}
-        notify(caller, "Crumbs Admin", "Unmuted all players.", 3)
-        return
-    end
-    
-    local targets = findPlayer(target, caller)
-    if not targets then notify(caller, "Crumbs Admin", "Player not found.", 3) return end
-    
-    if type(targets) ~= "table" then targets = {targets} end
-    
-    for _, player in ipairs(targets) do
-        admin.muted[player.UserId] = nil
-    end
-    
-    notify(caller, "Crumbs Admin", "Unmuted " .. #targets .. " player(s).", 3)
-end, {"unsilence"})
-
--- Rank 2 Commands
-AddCommand("loopkill", "Repeatedly kill a player", {"<player>"}, 2, function(caller, target)
-    local targets = findPlayer(target, caller)
-    if not targets then notify(caller, "Crumbs Admin", "Player not found.", 3) return end
-    
-    if type(targets) ~= "table" then targets = {targets} end
-    
-    for _, player in ipairs(targets) do
-        if player ~= caller then
-            admin.loopKill[player.UserId] = true
-        end
-    end
-    
-    notify(caller, "Crumbs Admin", "Loop kill started for " .. #targets .. " player(s).", 3)
-end, {"lk", "autokill"})
-
-AddCommand("unloopkill", "Stop loop kill", {"<player>"}, 2, function(caller, target)
-    if target:lower() == "all" then
-        admin.loopKill = {}
-        notify(caller, "Crumbs Admin", "Stopped all loop kills.", 3)
-        return
-    end
-    
-    local targets = findPlayer(target, caller)
-    if not targets then notify(caller, "Crumbs Admin", "Player not found.", 3) return end
-    
-    if type(targets) ~= "table" then targets = {targets} end
-    
-    local count = 0
-    for _, player in ipairs(targets) do
-        if admin.loopKill[player.UserId] then
-            admin.loopKill[player.UserId] = nil
-            count = count + 1
-        end
-    end
-    
-    notify(caller, "Crumbs Admin", "Stopped loop kill for " .. count .. " player(s).", 3)
-end, {"unlk", "stopkill"})
-
-AddCommand("looppunish", "Repeatedly punish a player", {"<player>"}, 2, function(caller, target)
-    local targets = findPlayer(target, caller)
-    if not targets then notify(caller, "Crumbs Admin", "Player not found.", 3) return end
-    
-    if type(targets) ~= "table" then targets = {targets} end
-    
-    for _, player in ipairs(targets) do
-        if player ~= caller then
-            admin.loopPunish[player.UserId] = true
-        end
-    end
-    
-    notify(caller, "Crumbs Admin", "Loop punish started for " .. #targets .. " player(s).", 3)
-end, {"lp", "autopunish"})
-
-AddCommand("unlooppunish", "Stop loop punish", {"<player>"}, 2, function(caller, target)
-    if target:lower() == "all" then
-        admin.loopPunish = {}
-        notify(caller, "Crumbs Admin", "Stopped all loop punishes.", 3)
-        return
-    end
-    
-    local targets = findPlayer(target, caller)
-    if not targets then notify(caller, "Crumbs Admin", "Player not found.", 3) return end
-    
-    if type(targets) ~= "table" then targets = {targets} end
-    
-    local count = 0
-    for _, player in ipairs(targets) do
-        if admin.loopPunish[player.UserId] then
-            admin.loopPunish[player.UserId] = nil
-            count = count + 1
-        end
-    end
-    
-    notify(caller, "Crumbs Admin", "Stopped loop punish for " .. count .. " player(s).", 3)
-end, {"unlp", "stoppunish"})
-
-AddCommand("god", "Toggle god mode", {"<player>"}, 2, function(caller, target)
-    local targets = findPlayer(target, caller)
-    if not targets then notify(caller, "Crumbs Admin", "Player not found.", 3) return end
-    
-    if type(targets) ~= "table" then targets = {targets} end
-    
-    for _, player in ipairs(targets) do
-        admin.godMode = admin.godMode or {}
-        admin.godMode[player.UserId] = not admin.godMode[player.UserId]
-        notify(player, "Crumbs Admin", "God mode: " .. (admin.godMode[player.UserId] and "ON" or "OFF"), 3)
-    end
-    
-    notify(caller, "Crumbs Admin", "Toggled god mode for " .. #targets .. " player(s).", 3)
-end, {"godmode", "invincible"})
-
--- Rank 3 Commands
-AddCommand("kick", "Kick a player", {"<player>", "[reason]"}, 3, function(caller, target, ...)
-    local reason = table.concat({...}, " ") or "No reason provided"
-    local targets = findPlayer(target, caller)
-    
-    if not targets then notify(caller, "Crumbs Admin", "Player not found.", 3) return end
-    if type(targets) ~= "table" then targets = {targets} end
-    
-    local count = 0
-    for _, player in ipairs(targets) do
-        if player ~= caller then
-            notifyAll("Crumbs Admin", player.Name .. " was kicked by " .. caller.Name .. " (" .. reason .. ")", 5)
-            player:Kick("Kicked by " .. caller.Name .. ": " .. reason)
-            count = count + 1
-        end
-    end
-    
-    notify(caller, "Crumbs Admin", "Kicked " .. count .. " player(s).", 3)
-end, {"kck"})
-
-AddCommand("clear", "Clear workspace parts", {}, 3, function(caller)
-    local count = 0
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("BasePart") and not obj:IsDescendantOf(Players) and obj.Name ~= "Baseplate" and not obj:IsA("Terrain") then
-            obj:Destroy()
-            count = count + 1
-        end
-    end
-    notify(caller, "Crumbs Admin", "Cleared " .. count .. " parts from workspace.", 3)
-end, {"clean", "wipe"})
-
-AddCommand("announce", "Make an announcement", {"<message>"}, 3, function(caller, ...)
-    local message = table.concat({...}, " ")
-    if message == "" then return end
-    notifyAll("📢 ANNOUNCEMENT", caller.Name .. ": " .. message, 8)
-end, {"say", "broadcast"})
-
--- Rank 4 Commands
-AddCommand("rank", "Set a player's rank", {"<player>", "<rank>"}, 4, function(caller, target, rankNum)
-    local targets = findPlayer(target, caller)
-    if not targets then notify(caller, "Crumbs Admin", "Player not found.", 3) return end
-    
-    if type(targets) == "table" then targets = targets[1] end
-    
-    local newRank = tonumber(rankNum) or 0
-    if newRank < 0 or newRank > 4 then
-        notify(caller, "Crumbs Admin", "Rank must be between 0 and 4.", 3)
-        return
-    end
-    
-    admin.tempRanks[targets.UserId] = newRank
-    notify(caller, "Crumbs Admin", "Set " .. targets.Name .. "'s rank to " .. admin.rankNames[newRank], 3)
-    notify(targets, "Crumbs Admin", "Your rank has been set to " .. admin.rankNames[newRank], 3)
-end, {"setrank"})
-
-AddCommand("save", "Save current location", {"<name>"}, 4, function(caller, ...)
-    if not caller.Character or not caller.Character:FindFirstChild("HumanoidRootPart") then
-        notify(caller, "Crumbs Admin", "You have no character.", 3)
-        return
-    end
-    
-    local name = table.concat({...}, " ")
-    if name == "" then return end
-    
-    admin.savedLocations[name] = {
-        cframe = caller.Character.HumanoidRootPart.CFrame,
-        savedBy = caller.Name,
-        time = os.time()
-    }
-    
-    notify(caller, "Crumbs Admin", "Saved location: " .. name, 3)
-end, {"saveloc"})
-
-AddCommand("load", "Load a saved location", {"<name>"}, 4, function(caller, ...)
-    local name = table.concat({...}, " ")
-    if name == "" then return end
-    
-    if not admin.savedLocations[name] then
-        notify(caller, "Crumbs Admin", "Location not found: " .. name, 3)
-        return
-    end
-    
-    if not caller.Character or not caller.Character:FindFirstChild("HumanoidRootPart") then
-        notify(caller, "Crumbs Admin", "You have no character.", 3)
-        return
-    end
-    
-    caller.Character.HumanoidRootPart.CFrame = admin.savedLocations[name].cframe
-    notify(caller, "Crumbs Admin", "Loaded location: " .. name, 3)
-end, {"loadloc"})
-
-AddCommand("locations", "List saved locations", {}, 4, function(caller)
-    local list = {}
-    for name, _ in pairs(admin.savedLocations) do
-        table.insert(list, name)
-    end
-    
-    if #list == 0 then
-        notify(caller, "Crumbs Admin", "No saved locations.", 3)
-    else
-        notify(caller, "Crumbs Admin", "Saved locations: " .. table.concat(list, ", "), 5)
-    end
-end, {"locs"})
-
-AddCommand("shutdown", "Shutdown the server", {"[seconds]"}, 4, function(caller, time)
-    local seconds = tonumber(time) or 30
-    if seconds < 5 then seconds = 5 end
-    if seconds > 60 then seconds = 60 end
-    
-    notifyAll("⚠️ SERVER SHUTDOWN", "Server shutting down in " .. seconds .. " seconds!", 5)
-    
-    for i = seconds, 1, -1 do
-        if i <= 10 or i % 10 == 0 then
-            notifyAll("⚠️ SERVER SHUTDOWN", "Server shutting down in " .. i .. " seconds!", 3)
-        end
-        task.wait(1)
-    end
-    
-    for _, player in ipairs(Players:GetPlayers()) do
-        player:Kick("Server is shutting down.")
-    end
-    
-    task.wait(1)
-    game:Shutdown()
-end, {"restart", "sd"})
-
-AddCommand("eject", "Unload Crumbs Admin", {}, 4, function(caller)
-    notifyAll("Crumbs Admin", "Crumbs Admin shutting down...", 3)
-    task.wait(1)
-    
-    -- Clear all data
-    admin.loopKill = {}
-    admin.loopPunish = {}
-    admin.frozen = {}
-    admin.invisible = {}
-    admin.muted = {}
-    admin.godMode = {}
-    admin.running = false
-    
-    -- Clear GUI
-    if admin.currentDashboard and admin.currentDashboard.Parent then
-        admin.currentDashboard:Destroy()
-        admin.currentDashboard = nil
-    end
-    
-    -- Clear notifications
-    for i = #admin.notificationStack, 1, -1 do
-        local entry = admin.notificationStack[i]
-        if entry and entry.gui and entry.gui.Parent then
-            entry.gui:Destroy()
-        end
-    end
-    admin.notificationStack = {}
-    
-    -- Clear command bar
-    local player = Players.LocalPlayer
-    if player and player.PlayerGui then
-        local cmdBar = player.PlayerGui:FindFirstChild("CmdBarGui")
-        if cmdBar then cmdBar:Destroy() end
-    end
-    
-    notify(caller, "Crumbs Admin", "Successfully ejected. Goodbye!", 3)
-    task.wait(3)
-    
-    -- Remove from global
-    _G.CrumbsAdmin = nil
-end, {"unload", "exit", "quit"})
+end)
 
 -- Loop handlers
 task.spawn(function()
-    admin.running = true
-    while admin.running do
+    admin.startTime = os.time()
+    while true do
         task.wait(0.5)
         
         -- Loop kill handler
-        for userId, enabled in pairs(admin.loopKill) do
+        for userId, enabled in pairs(activeLoopKills) do
             if enabled then
                 local player = Players:GetPlayerByUserId(userId)
                 if player and player.Character then
@@ -1946,7 +2169,7 @@ task.spawn(function()
         end
         
         -- Loop punish handler
-        for userId, enabled in pairs(admin.loopPunish) do
+        for userId, enabled in pairs(activePunishments) do
             if enabled then
                 local player = Players:GetPlayerByUserId(userId)
                 if player and player.Character then
@@ -1956,77 +2179,83 @@ task.spawn(function()
         end
         
         -- God mode handler
-        if admin.godMode then
-            for userId, enabled in pairs(admin.godMode) do
-                if enabled then
-                    local player = Players:GetPlayerByUserId(userId)
-                    if player and player.Character then
-                        local humanoid = getPlayerHumanoid(player)
-                        if humanoid then
-                            humanoid.MaxHealth = math.huge
-                            humanoid.Health = humanoid.MaxHealth
+        for userId, enabled in pairs(godModePlayers) do
+            if enabled then
+                local player = Players:GetPlayerByUserId(userId)
+                if player and player.Character then
+                    local humanoid = getPlayerHumanoid(player)
+                    if humanoid then
+                        humanoid.MaxHealth = math.huge
+                        humanoid.Health = humanoid.MaxHealth
+                    end
+                end
+            end
+        end
+        
+        -- Fly mode handler
+        for userId, enabled in pairs(flyModePlayers) do
+            if enabled then
+                local player = Players:GetPlayerByUserId(userId)
+                if player and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                    local root = player.Character.HumanoidRootPart
+                    local humanoid = getPlayerHumanoid(player)
+                    
+                    if humanoid then
+                        humanoid.PlatformStand = true
+                        local moveDirection = humanoid.MoveDirection
+                        if moveDirection.Magnitude > 0 then
+                            root.Velocity = moveDirection * 50
+                        else
+                            root.Velocity = Vector3.new(0, 0, 0)
                         end
                     end
                 end
             end
         end
+        
+        -- Ban expiration checker
+        local now = os.time()
+        for userId, banData in pairs(bannedPlayers) do
+            if banData.expiry and now > banData.expiry then
+                bannedPlayers[userId] = nil
+                activePunishments[userId] = nil
+            end
+        end
     end
 end)
+
+-- Mute chat filter (optional)
+if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+    TextChatService.OnIncomingMessage = function(message)
+        local player = Players:GetPlayerByUserId(message.TextSource.UserId)
+        if player and mutedPlayers[player.UserId] then
+            return Enum.IncomingMessageResponse.Cancel
+        end
+        return Enum.IncomingMessageResponse.Default
+    end
+else
+    for _, player in ipairs(Players:GetPlayers()) do
+        player.Chatted:Connect(function(msg)
+            if mutedPlayers[player.UserId] then
+                return true -- Block message
+            end
+        end)
+    end
+    
+    Players.PlayerAdded:Connect(function(player)
+        player.Chatted:Connect(function(msg)
+            if mutedPlayers[player.UserId] then
+                return true -- Block message
+            end
+        end)
+    end)
+end
 
 -- Initialize
-local function initialize()
-    local player = Players.LocalPlayer
-    if player then
-        -- Create GUI
-        pcall(createCommandBar)
-        
-        -- Setup command handler
-        pcall(setupCommandHandler)
-        
-        -- Welcome message
-        task.wait(1)
-        notify(player, "Crumbs Admin", "Welcome to Crumbs Admin, " .. player.DisplayName .. "!", 5)
-        notify(player, "Crumbs Admin", "Press , for command bar | Type " .. admin.config.prefix .. "help for commands", 5)
-        
-        print("=== Crumbs Admin v3.0 Loaded ===")
-        print("Prefix: " .. admin.config.prefix)
-        print("Your rank: " .. admin.rankNames[getRank(player)])
-        print("================================")
-    end
-end
+notifyAll("Crumbs Admin", "Crumbs Admin v3.0 has loaded!\nType " .. PREFIX .. "help for commands", 5)
 
--- Handle player added (for server-side)
-Players.PlayerAdded:Connect(function(player)
-    task.wait(1)
-    if player == Players.LocalPlayer then
-        initialize()
-    else
-        -- For other players in server context
-        task.spawn(function()
-            if getRank(player) > 0 then
-                notify(player, "Crumbs Admin", "Welcome! Your rank: " .. admin.rankNames[getRank(player)], 3)
-            end
-        end)
-    end
-end)
-
--- Initialize if we have a local player
-if Players.LocalPlayer then
-    initialize()
-end
-
--- For server context, also initialize for all current players
-for _, player in ipairs(Players:GetPlayers()) do
-    if player == Players.LocalPlayer then
-        initialize()
-    else
-        task.spawn(function()
-            if getRank(player) > 0 then
-                notify(player, "Crumbs Admin", "Crumbs Admin loaded! Your rank: " .. admin.rankNames[getRank(player)], 3)
-            end
-        end)
-    end
-end
-
-print("Crumbs Admin v3.0 - Universal Version Loaded")
-print("Works in console OR ServerScriptService!")
+print("=== Crumbs Admin v3.0 ===")
+print("Type: FULLY SERVER-SIDE")
+print("Prefix: " .. PREFIX)
+print("Players online: " .. #Players:GetPlayers())
+print("=========================")
