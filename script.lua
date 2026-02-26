@@ -3,6 +3,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local RunService = game:GetService("RunService")
 local TeleportService = game:GetService("TeleportService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local StarterGui = game:GetService("StarterGui")
 
 local PREFIX = ","
 
@@ -30,10 +31,6 @@ local activePunishments = {}
 local activeLoopKills = {}
 local bannedPlayers = {}
 
-local adminFolder = Instance.new("Folder")
-adminFolder.Name = "CrumbsAdmin"
-adminFolder.Parent = ServerScriptService
-
 local commandRemote = Instance.new("RemoteEvent")
 commandRemote.Name = "CommandRemote"
 commandRemote.Parent = ReplicatedStorage
@@ -41,10 +38,6 @@ commandRemote.Parent = ReplicatedStorage
 local notificationRemote = Instance.new("RemoteEvent")
 notificationRemote.Name = "NotificationRemote"
 notificationRemote.Parent = ReplicatedStorage
-
-local guiRemote = Instance.new("RemoteEvent")
-guiRemote.Name = "GUIRemote"
-guiRemote.Parent = ReplicatedStorage
 
 local dashboardRemote = Instance.new("RemoteEvent")
 dashboardRemote.Name = "DashboardRemote"
@@ -1259,12 +1252,12 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 
 local commandRemote = ReplicatedStorage:WaitForChild("CommandRemote")
 local notificationRemote = ReplicatedStorage:WaitForChild("NotificationRemote")
-local guiRemote = ReplicatedStorage:WaitForChild("GUIRemote")
 local dashboardRemote = ReplicatedStorage:WaitForChild("DashboardRemote")
 
 local CHOCOLATE = Color3.fromRGB(74, 49, 28)
@@ -1283,8 +1276,10 @@ screenGui.Name = "CmdBarGui"
 screenGui.Parent = player:WaitForChild("PlayerGui")
 screenGui.ResetOnSpawn = false
 screenGui.IgnoreGuiInset = true
+screenGui.DisplayOrder = 100
 
 local cmdBarFrame = Instance.new("Frame")
+cmdBarFrame.Name = "CmdBarFrame"
 cmdBarFrame.Size = UDim2.new(0.5, 0, 0.08, 0)
 cmdBarFrame.Position = UDim2.new(0.25, 0, 1.2, 0)
 cmdBarFrame.BackgroundTransparency = 1
@@ -1292,9 +1287,11 @@ cmdBarFrame.Visible = false
 cmdBarFrame.Parent = screenGui
 
 local cmdBarTextBox = Instance.new("TextBox")
+cmdBarTextBox.Name = "CmdBarTextBox"
 cmdBarTextBox.Size = UDim2.new(1, -4, 1, -4)
 cmdBarTextBox.Position = UDim2.new(0, 2, 0, 2)
 cmdBarTextBox.BackgroundColor3 = MILK_CHOCOLATE
+cmdBarTextBox.BackgroundTransparency = 0
 cmdBarTextBox.TextColor3 = WHITE
 cmdBarTextBox.TextSize = 18
 cmdBarTextBox.Font = Enum.Font.SourceSans
@@ -1309,7 +1306,8 @@ textBoxCorner.CornerRadius = UDim.new(0, 10)
 textBoxCorner.Parent = cmdBarTextBox
 
 local hintLabel = Instance.new("TextLabel")
-hintLabel.Size = UDim2.new(0, 280, 0, 20)
+hintLabel.Name = "HintLabel"
+hintLabel.Size = UDim2.new(0, 300, 0, 20)
 hintLabel.Position = UDim2.new(0, 10, 0, 10)
 hintLabel.BackgroundTransparency = 1
 hintLabel.TextColor3 = CHOCOLATE
@@ -1356,8 +1354,10 @@ cmdBarTextBox.FocusLost:Connect(function(enterPressed)
         animateTextBox(false)
         commandRemote:FireServer(commandText)
     else
-        cmdBarVisible = false
-        animateTextBox(false)
+        if cmdBarVisible then
+            cmdBarVisible = false
+            animateTextBox(false)
+        end
     end
 end)
 
@@ -1383,6 +1383,7 @@ notificationRemote.OnClientEvent:Connect(function(title, message, duration)
     notifGui.Name = "LNZNotification_" .. tick()
     notifGui.ResetOnSpawn = false
     notifGui.Parent = player.PlayerGui
+    notifGui.DisplayOrder = 101
     
     local notifFrame = Instance.new("Frame")
     notifFrame.Name = "NotificationFrame"
@@ -1463,9 +1464,10 @@ notificationRemote.OnClientEvent:Connect(function(title, message, duration)
         for _, entry in ipairs(notificationStack) do
             if entry.gui and entry.gui.Parent and entry.frame and entry.frame.Parent then
                 local targetY = -(runningOffset + entry.height)
-                TweenService:Create(entry.frame, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+                local tween = TweenService:Create(entry.frame, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
                     Position = UDim2.new(1, -290, 1, targetY)
-                }):Play()
+                })
+                tween:Play()
                 entry.yOffset = runningOffset
                 runningOffset = runningOffset + entry.height + 6
             end
@@ -1533,6 +1535,7 @@ local function createDashboard(defaultTab)
     dashboardGui.Name = "LanzyDashboard"
     dashboardGui.ResetOnSpawn = false
     dashboardGui.Parent = player.PlayerGui
+    dashboardGui.DisplayOrder = 102
     currentDashboard = dashboardGui
     
     local mainFrame = Instance.new("Frame")
@@ -1543,6 +1546,8 @@ local function createDashboard(defaultTab)
     mainFrame.BackgroundTransparency = 0.05
     mainFrame.BorderSizePixel = 2
     mainFrame.BorderColor3 = LIGHT_CHOCOLATE
+    mainFrame.Active = true
+    mainFrame.Draggable = true
     mainFrame.Parent = dashboardGui
     
     local mainCorner = Instance.new("UICorner")
@@ -1654,6 +1659,7 @@ local function createDashboard(defaultTab)
     commandsContent.BackgroundColor3 = MILK_CHOCOLATE
     commandsContent.BackgroundTransparency = 0
     commandsContent.BorderSizePixel = 0
+    commandsContent.BorderColor3 = LIGHT_CHOCOLATE
     commandsContent.ScrollBarThickness = 6
     commandsContent.ScrollBarImageColor3 = COOKIE_DOUGH
     commandsContent.Visible = (defaultTab == "Commands")
@@ -1785,15 +1791,31 @@ local function createDashboard(defaultTab)
         {name = "punish", rank = 1, desc = "Delete player character"},
         {name = "kill", rank = 1, desc = "Kill player"},
         {name = "freeze", rank = 1, desc = "Freeze player"},
+        {name = "unfreeze", rank = 1, desc = "Unfreeze player"},
         {name = "noclip", rank = 1, desc = "Disable collision"},
+        {name = "clip", rank = 1, desc = "Enable essential collision"},
         {name = "void", rank = 1, desc = "Send to void"},
+        {name = "skydive", rank = 1, desc = "Launch into sky"},
+        {name = "tp", rank = 1, desc = "Teleport player"},
+        {name = "bring", rank = 1, desc = "Bring player to you"},
+        {name = "removehats", rank = 1, desc = "Remove accessories"},
+        {name = "removearms", rank = 1, desc = "Remove arms"},
+        {name = "removelegs", rank = 1, desc = "Remove legs"},
+        {name = "invisible", rank = 1, desc = "Make invisible"},
+        {name = "visible", rank = 1, desc = "Make visible"},
         {name = "loopkill", rank = 2, desc = "Repeatedly kill"},
+        {name = "unloopkill", rank = 2, desc = "Stop loop kill"},
+        {name = "looppunish", rank = 2, desc = "Repeatedly punish"},
+        {name = "unlooppunish", rank = 2, desc = "Stop loop punish"},
         {name = "kick", rank = 3, desc = "Kick player"},
         {name = "ban", rank = 3, desc = "Ban player"},
+        {name = "unban", rank = 3, desc = "Unban player"},
+        {name = "clear", rank = 3, desc = "Clear workspace"},
+        {name = "eject", rank = 3, desc = "Unload admin"},
         {name = "rank", rank = 4, desc = "Set player rank"},
     }
     
-    for counter, cmd in ipairs(sampleCommands) do
+    for _, cmd in ipairs(sampleCommands) do
         local commandFrame = Instance.new("Frame")
         commandFrame.Name = "Command_" .. cmd.name
         commandFrame.Size = UDim2.new(1, -12, 0, 60)
@@ -1811,22 +1833,34 @@ local function createDashboard(defaultTab)
         commandLabel.Size = UDim2.new(0.5, 0, 0, 16)
         commandLabel.Position = UDim2.new(0, 6, 0, 3)
         commandLabel.BackgroundTransparency = 1
-        commandLabel.Text = counter .. " | ," .. cmd.name
+        commandLabel.Text = "," .. cmd.name
         commandLabel.TextColor3 = OFF_WHITE
         commandLabel.TextSize = 15
         commandLabel.Font = Enum.Font.GothamBold
         commandLabel.TextXAlignment = Enum.TextXAlignment.Left
         commandLabel.Parent = commandFrame
     
+        local rankLabel = Instance.new("TextLabel")
+        rankLabel.Size = UDim2.new(0.5, -12, 0, 16)
+        rankLabel.Position = UDim2.new(0.5, 6, 0, 3)
+        rankLabel.BackgroundTransparency = 1
+        rankLabel.Text = "Rank: " .. RANK_NAMES[cmd.rank] .. " (" .. cmd.rank .. ")"
+        rankLabel.TextColor3 = COOKIE_DOUGH
+        rankLabel.TextSize = 13
+        rankLabel.Font = Enum.Font.Gotham
+        rankLabel.TextXAlignment = Enum.TextXAlignment.Right
+        rankLabel.Parent = commandFrame
+    
         local descLabel = Instance.new("TextLabel")
-        descLabel.Size = UDim2.new(1, -12, 0, 22)
+        descLabel.Size = UDim2.new(1, -12, 0, 32)
         descLabel.Position = UDim2.new(0, 6, 0, 22)
         descLabel.BackgroundTransparency = 1
-        descLabel.Text = "Rank required: " .. RANK_NAMES[cmd.rank] .. " (" .. cmd.rank .. ") - " .. cmd.desc
+        descLabel.Text = cmd.desc
         descLabel.TextColor3 = OFF_WHITE
-        descLabel.TextSize = 12
+        descLabel.TextSize = 13
         descLabel.Font = Enum.Font.Gotham
         descLabel.TextXAlignment = Enum.TextXAlignment.Left
+        descLabel.TextYAlignment = Enum.TextYAlignment.Top
         descLabel.TextWrapped = true
         descLabel.Parent = commandFrame
     end
@@ -1874,36 +1908,6 @@ local function createDashboard(defaultTab)
         switchTab("Credits")
     end)
     
-    local dragging = false
-    local dragStart = nil
-    local startPos = nil
-    
-    topBar.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            dragStart = input.Position
-            startPos = mainFrame.Position
-        end
-    end)
-    
-    topBar.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local delta = input.Position - dragStart
-            mainFrame.Position = UDim2.new(
-                startPos.X.Scale,
-                startPos.X.Offset + delta.X,
-                startPos.Y.Scale,
-                startPos.Y.Offset + delta.Y
-            )
-        end
-    end)
-    
-    topBar.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = false
-        end
-    end)
-    
     closeButton.MouseButton1Click:Connect(function()
         TweenService:Create(mainFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
         TweenService:Create(topBar, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
@@ -1919,7 +1923,10 @@ dashboardRemote.OnClientEvent:Connect(function(defaultTab)
     createDashboard(defaultTab)
 end)
 
-notificationRemote:FireServer("Client loaded")
+coroutine.wrap(function()
+    task.wait(1)
+    notificationRemote:FireServer("Client loaded")
+end)()
 ]]
 
 local function setupClient(player)
@@ -1964,4 +1971,4 @@ end
 
 RunService.Heartbeat:Connect(protectManagers)
 
-notifyAll("Crumbs Admin", "Crumbs Admin (SS) has loaded in!!! :D", 3)
+notifyAll("Crumbs Admin", "Crumbs Admin (SS) is running... :3", 5)
