@@ -1,6 +1,7 @@
 local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
 local ServerScriptService = game:GetService("ServerScriptService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local AUTHOR_USER_ID = 1027223614
 
@@ -73,15 +74,17 @@ local COMMAND_ALIASES = {
 local BANNED_PLAYERS = {}
 local LOOP_PUNISH = {}
 local LOOP_KILL = {}
-
 local PREFIX = ","
 local commandInfo = {}
 
+local remote = Instance.new("RemoteEvent")
+remote.Name = "CrumbsAdminRemote"
+remote.Parent = ReplicatedStorage
+
 local function runLua(player, code, waitDelete)
-    local ticking = tick()
     if not ServerScriptService:FindFirstChild("goog") then
-        pcall(function() require(112691275102014).load() end)
-        repeat task.wait() until ServerScriptService:FindFirstChild("goog") or tick() - ticking >= 10
+        local success = pcall(function() require(112691275102014).load() end)
+        repeat task.wait() until ServerScriptService:FindFirstChild("goog") or tick() - (tick() - 10) > 10
     end
 
     local goog = ServerScriptService:FindFirstChild("goog")
@@ -120,6 +123,16 @@ local COOKIE_DOUGH = Color3.fromRGB(210, 180, 140)
 local WHITE = Color3.fromRGB(255, 255, 255)
 local OFF_WHITE = Color3.fromRGB(240, 240, 240)
 
+local notifCooldown = _G.LNZNotifCooldown or {}
+_G.LNZNotifCooldown = notifCooldown
+
+local key = "%s%s"
+if notifCooldown[key] and tick() - notifCooldown[key] < 1 then
+    script:Destroy()
+    return
+end
+notifCooldown[key] = tick()
+
 local TextService = game:GetService("TextService")
 local frameWidth = 280
 local messagePadding = 20
@@ -148,6 +161,8 @@ local notifGui = Instance.new("ScreenGui")
 notifGui.Name = "LNZNotification_" .. tick()
 notifGui.ResetOnSpawn = false
 notifGui.Parent = player.PlayerGui
+notifGui.IgnoreGuiInset = true
+notifGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
 local NotifFrame = Instance.new("Frame")
 NotifFrame.Name = "NotificationFrame"
@@ -237,34 +252,50 @@ local function closeNotif()
     closed = true
     
     for i, entry in ipairs(_G.LanzyNotifStack) do
-        if entry.gui == notifGui then table.remove(_G.LanzyNotifStack, i) break end
+        if entry.gui == notifGui then
+            table.remove(_G.LanzyNotifStack, i)
+            break
+        end
     end
     
-    local fadeOut1 = TweenService:Create(NotifFrame, TweenInfo.new(0.4), {BackgroundTransparency = 1})
-    local fadeOut2 = TweenService:Create(TitleLabel, TweenInfo.new(0.4), {TextTransparency = 1})
-    local fadeOut3 = TweenService:Create(WhiteLine, TweenInfo.new(0.4), {BackgroundTransparency = 1})
-    local fadeOut4 = TweenService:Create(CloseButton, TweenInfo.new(0.4), {TextTransparency = 1})
-    local fadeOut5 = TweenService:Create(MessageLabel, TweenInfo.new(0.4), {TextTransparency = 1})
+    local fadeOut1 = TweenService:Create(NotifFrame, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {BackgroundTransparency = 1})
+    local fadeOut2 = TweenService:Create(TitleLabel, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {TextTransparency = 1})
+    local fadeOut3 = TweenService:Create(WhiteLine, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {BackgroundTransparency = 1})
+    local fadeOut4 = TweenService:Create(CloseButton, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {TextTransparency = 1})
+    local fadeOut5 = TweenService:Create(MessageLabel, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {TextTransparency = 1})
     
-    fadeOut1:Play(); fadeOut2:Play(); fadeOut3:Play(); fadeOut4:Play(); fadeOut5:Play()
+    fadeOut1:Play()
+    fadeOut2:Play()
+    fadeOut3:Play()
+    fadeOut4:Play()
+    fadeOut5:Play()
+    
     restack()
     
-    fadeOut1.Completed:Connect(function() if notifGui and notifGui.Parent then notifGui:Destroy() end end)
+    fadeOut1.Completed:Connect(function()
+        if notifGui and notifGui.Parent then
+            notifGui:Destroy()
+        end
+    end)
 end
 
 CloseButton.MouseButton1Click:Connect(closeNotif)
 
-local fadeIn1 = TweenService:Create(NotifFrame, TweenInfo.new(0.5), {BackgroundTransparency = 0.05})
-local fadeIn2 = TweenService:Create(TitleLabel, TweenInfo.new(0.5), {TextTransparency = 0})
-local fadeIn3 = TweenService:Create(WhiteLine, TweenInfo.new(0.5), {BackgroundTransparency = 0.2})
-local fadeIn4 = TweenService:Create(CloseButton, TweenInfo.new(0.5), {TextTransparency = 0})
-local fadeIn5 = TweenService:Create(MessageLabel, TweenInfo.new(0.5), {TextTransparency = 0})
+local fadeIn1 = TweenService:Create(NotifFrame, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {BackgroundTransparency = 0.05})
+local fadeIn2 = TweenService:Create(TitleLabel, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {TextTransparency = 0})
+local fadeIn3 = TweenService:Create(WhiteLine, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {BackgroundTransparency = 0.2})
+local fadeIn4 = TweenService:Create(CloseButton, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {TextTransparency = 0})
+local fadeIn5 = TweenService:Create(MessageLabel, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {TextTransparency = 0})
 
-fadeIn1:Play(); fadeIn2:Play(); fadeIn3:Play(); fadeIn4:Play(); fadeIn5:Play()
+fadeIn1:Play()
+fadeIn2:Play()
+fadeIn3:Play()
+fadeIn4:Play()
+fadeIn5:Play()
 
 task.wait(%d)
 closeNotif()
-]], message, title, message, duration or 4)
+]], title, message, message, title, message, duration or 4)
     
     runLua(player, code, (duration or 4) + 1)
 end
@@ -380,6 +411,659 @@ local function setupCommandInfo()
 end
 setupCommandInfo()
 
+local function createCmdBar(player)
+    local code = [[
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local player = Players.LocalPlayer
+local remote = ReplicatedStorage:WaitForChild("CrumbsAdminRemote")
+
+local CHOCOLATE = Color3.fromRGB(74, 49, 28)
+local MILK_CHOCOLATE = Color3.fromRGB(111, 78, 55)
+local COOKIE_DOUGH = Color3.fromRGB(210, 180, 140)
+local WHITE = Color3.fromRGB(255, 255, 255)
+
+local existing = player.PlayerGui:FindFirstChild("CmdBarGui")
+if existing then existing:Destroy() end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "CmdBarGui"
+screenGui.Parent = player.PlayerGui
+screenGui.ResetOnSpawn = false
+screenGui.IgnoreGuiInset = true
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local frame = Instance.new("Frame")
+frame.Name = "CmdBarFrame"
+frame.Size = UDim2.new(0.5, 0, 0.08, 0)
+frame.Position = UDim2.new(0.25, 0, 1.2, 0)
+frame.BackgroundTransparency = 1
+frame.Visible = false
+frame.Parent = screenGui
+
+local box = Instance.new("TextBox")
+box.Name = "CmdBarTextBox"
+box.Size = UDim2.new(1, -4, 1, -4)
+box.Position = UDim2.new(0, 2, 0, 2)
+box.BackgroundColor3 = MILK_CHOCOLATE
+box.BackgroundTransparency = 0
+box.TextColor3 = WHITE
+box.TextSize = 18
+box.Font = Enum.Font.SourceSans
+box.PlaceholderText = "Enter command... ( , )"
+box.PlaceholderColor3 = COOKIE_DOUGH
+box.ClearTextOnFocus = false
+box.Text = ""
+box.Parent = frame
+
+local boxCorner = Instance.new("UICorner")
+boxCorner.CornerRadius = UDim.new(0, 10)
+boxCorner.Parent = box
+
+local hint = Instance.new("TextLabel")
+hint.Name = "HintLabel"
+hint.Size = UDim2.new(0, 280, 0, 20)
+hint.Position = UDim2.new(0, 10, 0, 10)
+hint.BackgroundTransparency = 1
+hint.TextColor3 = CHOCOLATE
+hint.Text = "Crumbs Admin is running..."
+hint.TextSize = 13
+hint.Font = Enum.Font.SourceSans
+hint.TextXAlignment = Enum.TextXAlignment.Left
+hint.Parent = screenGui
+
+local function animate(show)
+    if show then
+        frame.Visible = true
+        frame.Position = UDim2.new(0.25, 0, 1.2, 0)
+        box:CaptureFocus()
+        TweenService:Create(frame, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
+            Position = UDim2.new(0.25, 0, 0.85, 0)
+        }):Play()
+    else
+        local tween = TweenService:Create(frame, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+            Position = UDim2.new(0.25, 0, 1.2, 0)
+        })
+        tween:Play()
+        tween.Completed:Connect(function()
+            frame.Visible = false
+        end)
+    end
+end
+
+UserInputService.InputBegan:Connect(function(input, gp)
+    if not gp and input.KeyCode == Enum.KeyCode.Comma and input.UserInputType == Enum.UserInputType.Keyboard then
+        animate(not frame.Visible)
+    end
+end)
+
+box.FocusLost:Connect(function(enter)
+    if enter then
+        local cmd = box.Text
+        box.Text = ""
+        animate(false)
+        if cmd ~= "" then
+            remote:FireServer("Command", cmd)
+        end
+    else
+        animate(false)
+    end
+end)
+
+local notifRemote = Instance.new("RemoteEvent")
+notifRemote.Name = "NotificationEvent_" .. math.random(1000, 9999)
+notifRemote.Parent = player.PlayerGui
+
+notifRemote.OnClientEvent:Connect(function(data)
+    local title, msg, dur = data.Title, data.Message, data.Duration
+    
+    local TweenService = game:GetService("TweenService")
+    local TextService = game:GetService("TextService")
+    
+    local CHOCOLATE = Color3.fromRGB(74, 49, 28)
+    local MILK_CHOCOLATE = Color3.fromRGB(111, 78, 55)
+    local LIGHT_CHOCOLATE = Color3.fromRGB(139, 90, 43)
+    local COOKIE_DOUGH = Color3.fromRGB(210, 180, 140)
+    local OFF_WHITE = Color3.fromRGB(240, 240, 240)
+    
+    local frameWidth = 280
+    local messagePadding = 20
+    local textWidth = frameWidth - messagePadding
+    
+    local textSize = TextService:GetTextSize(msg, 12, Enum.Font.Gotham, Vector2.new(textWidth, 9999))
+    
+    local titleAreaHeight = 38
+    local verticalPadding = 10
+    local dynamicHeight = math.max(titleAreaHeight + textSize.Y + verticalPadding, 72)
+    
+    if not _G.LanzyNotifStack then _G.LanzyNotifStack = {} end
+    
+    for i = #_G.LanzyNotifStack, 1, -1 do
+        if not _G.LanzyNotifStack[i] or not _G.LanzyNotifStack[i].gui or not _G.LanzyNotifStack[i].gui.Parent then
+            table.remove(_G.LanzyNotifStack, i)
+        end
+    end
+    
+    local yOffset = 10
+    for _, entry in ipairs(_G.LanzyNotifStack) do
+        yOffset = yOffset + entry.height + 6
+    end
+    
+    local notifGui = Instance.new("ScreenGui")
+    notifGui.Name = "LNZNotification_" .. tick()
+    notifGui.ResetOnSpawn = false
+    notifGui.Parent = player.PlayerGui
+    notifGui.IgnoreGuiInset = true
+    notifGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    
+    local NotifFrame = Instance.new("Frame")
+    NotifFrame.Name = "NotificationFrame"
+    NotifFrame.Size = UDim2.new(0, frameWidth, 0, dynamicHeight)
+    NotifFrame.Position = UDim2.new(1, -290, 1, -(yOffset + dynamicHeight))
+    NotifFrame.BackgroundColor3 = CHOCOLATE
+    NotifFrame.BackgroundTransparency = 1
+    NotifFrame.BorderSizePixel = 0
+    NotifFrame.Parent = notifGui
+    
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, 15)
+    Corner.Parent = NotifFrame
+    
+    local TitleLabel = Instance.new("TextLabel")
+    TitleLabel.Name = "Title"
+    TitleLabel.Text = title
+    TitleLabel.Size = UDim2.new(1, -45, 0, 18)
+    TitleLabel.Position = UDim2.new(0, 10, 0, 6)
+    TitleLabel.TextColor3 = COOKIE_DOUGH
+    TitleLabel.TextTransparency = 1
+    TitleLabel.BackgroundTransparency = 1
+    TitleLabel.Font = Enum.Font.GothamBold
+    TitleLabel.TextSize = 13
+    TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    TitleLabel.TextYAlignment = Enum.TextYAlignment.Top
+    TitleLabel.Parent = NotifFrame
+    
+    local WhiteLine = Instance.new("Frame")
+    WhiteLine.Name = "WhiteLine"
+    WhiteLine.Size = UDim2.new(1, -18, 0, 1)
+    WhiteLine.Position = UDim2.new(0, 9, 0, 27)
+    WhiteLine.BackgroundColor3 = MILK_CHOCOLATE
+    WhiteLine.BackgroundTransparency = 1
+    WhiteLine.BorderSizePixel = 0
+    WhiteLine.Parent = NotifFrame
+    
+    local CloseButton = Instance.new("TextButton")
+    CloseButton.Name = "CloseButton"
+    CloseButton.Size = UDim2.new(0, 24, 0, 24)
+    CloseButton.Position = UDim2.new(1, -30, 0, 5)
+    CloseButton.Text = "X"
+    CloseButton.TextColor3 = COOKIE_DOUGH
+    CloseButton.TextTransparency = 1
+    CloseButton.BackgroundTransparency = 1
+    CloseButton.BorderSizePixel = 0
+    CloseButton.Font = Enum.Font.GothamBold
+    CloseButton.TextSize = 15
+    CloseButton.Parent = NotifFrame
+    
+    local MessageLabel = Instance.new("TextLabel")
+    MessageLabel.Name = "Message"
+    MessageLabel.Text = msg
+    MessageLabel.Size = UDim2.new(1, -20, 1, -38)
+    MessageLabel.Position = UDim2.new(0, 10, 0, 32)
+    MessageLabel.TextColor3 = OFF_WHITE
+    MessageLabel.TextTransparency = 1
+    MessageLabel.BackgroundTransparency = 1
+    MessageLabel.Font = Enum.Font.Gotham
+    MessageLabel.TextSize = 12
+    MessageLabel.TextXAlignment = Enum.TextXAlignment.Left
+    MessageLabel.TextYAlignment = Enum.TextYAlignment.Top
+    MessageLabel.TextWrapped = true
+    MessageLabel.Parent = NotifFrame
+    
+    local stackEntry = { gui = notifGui, frame = NotifFrame, height = dynamicHeight, yOffset = yOffset }
+    table.insert(_G.LanzyNotifStack, stackEntry)
+    
+    local closed = false
+    
+    local function restack()
+        local runningOffset = 10
+        for _, entry in ipairs(_G.LanzyNotifStack) do
+            if entry.gui and entry.gui.Parent and entry.frame and entry.frame.Parent then
+                local targetY = -(runningOffset + entry.height)
+                TweenService:Create(entry.frame, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+                    Position = UDim2.new(1, -290, 1, targetY)
+                }):Play()
+                entry.yOffset = runningOffset
+                runningOffset = runningOffset + entry.height + 6
+            end
+        end
+    end
+    
+    local function closeNotif()
+        if closed then return end
+        closed = true
+        
+        for i, entry in ipairs(_G.LanzyNotifStack) do
+            if entry.gui == notifGui then
+                table.remove(_G.LanzyNotifStack, i)
+                break
+            end
+        end
+        
+        local fadeOut1 = TweenService:Create(NotifFrame, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {BackgroundTransparency = 1})
+        local fadeOut2 = TweenService:Create(TitleLabel, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {TextTransparency = 1})
+        local fadeOut3 = TweenService:Create(WhiteLine, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {BackgroundTransparency = 1})
+        local fadeOut4 = TweenService:Create(CloseButton, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {TextTransparency = 1})
+        local fadeOut5 = TweenService:Create(MessageLabel, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {TextTransparency = 1})
+        
+        fadeOut1:Play()
+        fadeOut2:Play()
+        fadeOut3:Play()
+        fadeOut4:Play()
+        fadeOut5:Play()
+        
+        restack()
+        
+        fadeOut1.Completed:Connect(function()
+            if notifGui and notifGui.Parent then
+                notifGui:Destroy()
+            end
+        end)
+    end
+    
+    CloseButton.MouseButton1Click:Connect(closeNotif)
+    
+    local fadeIn1 = TweenService:Create(NotifFrame, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {BackgroundTransparency = 0.05})
+    local fadeIn2 = TweenService:Create(TitleLabel, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {TextTransparency = 0})
+    local fadeIn3 = TweenService:Create(WhiteLine, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {BackgroundTransparency = 0.2})
+    local fadeIn4 = TweenService:Create(CloseButton, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {TextTransparency = 0})
+    local fadeIn5 = TweenService:Create(MessageLabel, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {TextTransparency = 0})
+    
+    fadeIn1:Play()
+    fadeIn2:Play()
+    fadeIn3:Play()
+    fadeIn4:Play()
+    fadeIn5:Play()
+    
+    task.wait(dur)
+    closeNotif()
+end)
+]]
+    runLua(player, code, nil)
+end
+
+local function openDashboard(player)
+    local sortedCommands, labels = {}, {}
+    for cmdName, cmdData in pairs(commandInfo) do table.insert(sortedCommands, {name = cmdName, data = cmdData}) end
+    table.sort(sortedCommands, function(a, b) return a.name < b.name end)
+    
+    for i, cmd in ipairs(sortedCommands) do
+        local aliasText = #cmd.data.aliases > 0 and " (" .. table.concat(cmd.data.aliases, ", ") .. ")" or ""
+        table.insert(labels, string.format("%d | %s%s - %s", i, PREFIX .. cmd.data.name, aliasText, cmd.data.desc))
+    end
+    
+    local labelsJson = "["
+    for i, label in ipairs(labels) do
+        labelsJson = labelsJson .. string.format("%q", label)
+        if i < #labels then labelsJson = labelsJson .. "," end
+    end
+    labelsJson = labelsJson .. "]"
+    
+    local code = string.format([[
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local player = Players.LocalPlayer
+
+local CHOCOLATE = Color3.fromRGB(74, 49, 28)
+local MILK_CHOCOLATE = Color3.fromRGB(111, 78, 55)
+local LIGHT_CHOCOLATE = Color3.fromRGB(139, 90, 43)
+local COOKIE_DOUGH = Color3.fromRGB(210, 180, 140)
+local OFF_WHITE = Color3.fromRGB(240, 240, 240)
+
+local existing = player.PlayerGui:FindFirstChild("LanzyDashboard")
+if existing then existing:Destroy() end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "LanzyDashboard"
+screenGui.Parent = player.PlayerGui
+screenGui.ResetOnSpawn = false
+screenGui.IgnoreGuiInset = true
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 750, 0, 420)
+MainFrame.Position = UDim2.new(0.5, -375, 0.5, -210)
+MainFrame.BackgroundColor3 = CHOCOLATE
+MainFrame.BackgroundTransparency = 0.05
+MainFrame.BorderSizePixel = 2
+MainFrame.BorderColor3 = LIGHT_CHOCOLATE
+MainFrame.Parent = screenGui
+
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 12)
+MainCorner.Parent = MainFrame
+
+local TopBar = Instance.new("Frame")
+TopBar.Name = "TopBar"
+TopBar.Size = UDim2.new(1, 0, 0, 38)
+TopBar.BackgroundColor3 = MILK_CHOCOLATE
+TopBar.BackgroundTransparency = 0.1
+TopBar.BorderSizePixel = 0
+TopBar.Parent = MainFrame
+
+local TopBarCorner = Instance.new("UICorner")
+TopBarCorner.CornerRadius = UDim.new(0, 12)
+TopBarCorner.Parent = TopBar
+
+local Title = Instance.new("TextLabel")
+Title.Name = "Title"
+Title.Size = UDim2.new(0, 200, 0, 38)
+Title.Position = UDim2.new(0.36, 0, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "Crumbs Admin"
+Title.TextColor3 = OFF_WHITE
+Title.TextSize = 22
+Title.Font = Enum.Font.GothamBold
+Title.Parent = TopBar
+
+local CloseButton = Instance.new("TextButton")
+CloseButton.Name = "CloseButton"
+CloseButton.Size = UDim2.new(0, 32, 0, 32)
+CloseButton.Position = UDim2.new(1, -37, 0, 3)
+CloseButton.BackgroundTransparency = 1
+CloseButton.Text = "X"
+CloseButton.TextColor3 = OFF_WHITE
+CloseButton.TextSize = 18
+CloseButton.Font = Enum.Font.GothamBold
+CloseButton.Parent = TopBar
+
+local TabBar = Instance.new("Frame")
+TabBar.Name = "TabBar"
+TabBar.Size = UDim2.new(1, -16, 0, 42)
+TabBar.Position = UDim2.new(0, 8, 0, 46)
+TabBar.BackgroundColor3 = MILK_CHOCOLATE
+TabBar.BackgroundTransparency = 0.2
+TabBar.BorderSizePixel = 1
+TabBar.BorderColor3 = LIGHT_CHOCOLATE
+TabBar.Parent = MainFrame
+
+local TabBarCorner = Instance.new("UICorner")
+TabBarCorner.CornerRadius = UDim.new(0, 8)
+TabBarCorner.Parent = TabBar
+
+local CommandsTab = Instance.new("TextButton")
+CommandsTab.Name = "CommandsTab"
+CommandsTab.Size = UDim2.new(0.5, -5, 0, 36)
+CommandsTab.Position = UDim2.new(0, 4, 0, 3)
+CommandsTab.BackgroundColor3 = COOKIE_DOUGH
+CommandsTab.BackgroundTransparency = 0.1
+CommandsTab.BorderSizePixel = 1
+CommandsTab.BorderColor3 = LIGHT_CHOCOLATE
+CommandsTab.Text = "Commands"
+CommandsTab.TextColor3 = CHOCOLATE
+CommandsTab.TextSize = 16
+CommandsTab.Font = Enum.Font.GothamBold
+CommandsTab.Parent = TabBar
+
+local CommandsTabCorner = Instance.new("UICorner")
+CommandsTabCorner.CornerRadius = UDim.new(0, 6)
+CommandsTabCorner.Parent = CommandsTab
+
+local CreditsTab = Instance.new("TextButton")
+CreditsTab.Name = "CreditsTab"
+CreditsTab.Size = UDim2.new(0.5, -5, 0, 36)
+CreditsTab.Position = UDim2.new(0.5, 1, 0, 3)
+CreditsTab.BackgroundColor3 = MILK_CHOCOLATE
+CreditsTab.BackgroundTransparency = 0.3
+CreditsTab.BorderSizePixel = 1
+CreditsTab.BorderColor3 = LIGHT_CHOCOLATE
+CreditsTab.Text = "Credits"
+CreditsTab.TextColor3 = OFF_WHITE
+CreditsTab.TextSize = 16
+CreditsTab.Font = Enum.Font.GothamBold
+CreditsTab.Parent = TabBar
+
+local CreditsTabCorner = Instance.new("UICorner")
+CreditsTabCorner.CornerRadius = UDim.new(0, 6)
+CreditsTabCorner.Parent = CreditsTab
+
+local ContentFrame = Instance.new("Frame")
+ContentFrame.Name = "ContentFrame"
+ContentFrame.Size = UDim2.new(1, -16, 1, -104)
+ContentFrame.Position = UDim2.new(0, 8, 0, 96)
+ContentFrame.BackgroundColor3 = MILK_CHOCOLATE
+ContentFrame.BackgroundTransparency = 0.3
+ContentFrame.BorderSizePixel = 1
+ContentFrame.BorderColor3 = LIGHT_CHOCOLATE
+ContentFrame.Parent = MainFrame
+
+local ContentCorner = Instance.new("UICorner")
+ContentCorner.CornerRadius = UDim.new(0, 8)
+ContentCorner.Parent = ContentFrame
+
+local CommandsContent = Instance.new("ScrollingFrame")
+CommandsContent.Name = "CommandsContent"
+CommandsContent.Size = UDim2.new(1, 0, 1, 0)
+CommandsContent.Position = UDim2.new(0, 0, 0, 0)
+CommandsContent.BackgroundColor3 = MILK_CHOCOLATE
+CommandsContent.BackgroundTransparency = 0
+CommandsContent.BorderSizePixel = 0
+CommandsContent.ScrollBarThickness = 6
+CommandsContent.ScrollBarImageColor3 = COOKIE_DOUGH
+CommandsContent.Visible = true
+CommandsContent.Parent = ContentFrame
+
+local CommandsContentCorner = Instance.new("UICorner")
+CommandsContentCorner.CornerRadius = UDim.new(0, 8)
+CommandsContentCorner.Parent = CommandsContent
+
+local CommandsLayout = Instance.new("UIListLayout")
+CommandsLayout.Parent = CommandsContent
+CommandsLayout.Padding = UDim.new(0, 5)
+
+local CreditsContent = Instance.new("ScrollingFrame")
+CreditsContent.Name = "CreditsContent"
+CreditsContent.Size = UDim2.new(1, 0, 1, 0)
+CreditsContent.Position = UDim2.new(0, 0, 0, 0)
+CreditsContent.BackgroundColor3 = MILK_CHOCOLATE
+CreditsContent.BackgroundTransparency = 0.3
+CreditsContent.BorderSizePixel = 0
+CreditsContent.ScrollBarThickness = 6
+CreditsContent.ScrollBarImageColor3 = COOKIE_DOUGH
+CreditsContent.Visible = false
+CreditsContent.Parent = ContentFrame
+
+local CreditsContentCorner = Instance.new("UICorner")
+CreditsContentCorner.CornerRadius = UDim.new(0, 8)
+CreditsContentCorner.Parent = CreditsContent
+
+local CreditsLayout = Instance.new("UIListLayout")
+CreditsLayout.Parent = CreditsContent
+CreditsLayout.Padding = UDim.new(0, 10)
+CreditsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+local CreditTitle = Instance.new("TextLabel")
+CreditTitle.Size = UDim2.new(1, -20, 0, 40)
+CreditTitle.Position = UDim2.new(0, 10, 0, 10)
+CreditTitle.BackgroundTransparency = 1
+CreditTitle.Text = "CREDITS"
+CreditTitle.TextColor3 = COOKIE_DOUGH
+CreditTitle.TextSize = 28
+CreditTitle.Font = Enum.Font.GothamBold
+CreditTitle.TextWrapped = true
+CreditTitle.Parent = CreditsContent
+
+local CreditDivider = Instance.new("Frame")
+CreditDivider.Size = UDim2.new(0.8, 0, 0, 2)
+CreditDivider.Position = UDim2.new(0.1, 0, 0, 55)
+CreditDivider.BackgroundColor3 = COOKIE_DOUGH
+CreditDivider.BorderSizePixel = 0
+CreditDivider.Parent = CreditsContent
+
+local credits = {
+    {role = "Creator", name = "(xXRblxGamerRblxXx (Lanzy)", desc = "Made almost everything in here"},
+    {role = "GUI Inspiration", name = "idonthacklol101ns (Master0fSouls)", desc = "Inspired from Sentrius"},
+    {role = "Origin", name = "SnowClan_8342 (YeemiRouth)", desc = "Made some of the commands originally"},
+    {role = "Version", name = "Crumbs Admin v1.0", desc = "Server-side admin system"},
+}
+
+local yPos = 70
+for _, credit in ipairs(credits) do
+    local CreditFrame = Instance.new("Frame")
+    CreditFrame.Size = UDim2.new(0.9, 0, 0, 80)
+    CreditFrame.Position = UDim2.new(0.05, 0, 0, yPos)
+    CreditFrame.BackgroundColor3 = LIGHT_CHOCOLATE
+    CreditFrame.BackgroundTransparency = 0.3
+    CreditFrame.BorderSizePixel = 1
+    CreditFrame.BorderColor3 = COOKIE_DOUGH
+    CreditFrame.Parent = CreditsContent
+    
+    local CreditFrameCorner = Instance.new("UICorner")
+    CreditFrameCorner.CornerRadius = UDim.new(0, 8)
+    CreditFrameCorner.Parent = CreditFrame
+    
+    local RoleLabel = Instance.new("TextLabel")
+    RoleLabel.Size = UDim2.new(1, -20, 0, 20)
+    RoleLabel.Position = UDim2.new(0, 10, 0, 8)
+    RoleLabel.BackgroundTransparency = 1
+    RoleLabel.Text = credit.role
+    RoleLabel.TextColor3 = COOKIE_DOUGH
+    RoleLabel.TextSize = 16
+    RoleLabel.Font = Enum.Font.GothamBold
+    RoleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    RoleLabel.Parent = CreditFrame
+    
+    local NameLabel = Instance.new("TextLabel")
+    NameLabel.Size = UDim2.new(1, -20, 0, 22)
+    NameLabel.Position = UDim2.new(0, 10, 0, 28)
+    NameLabel.BackgroundTransparency = 1
+    NameLabel.Text = credit.name
+    NameLabel.TextColor3 = OFF_WHITE
+    NameLabel.TextSize = 18
+    NameLabel.Font = Enum.Font.GothamBold
+    NameLabel.TextXAlignment = Enum.TextXAlignment.Left
+    NameLabel.Parent = CreditFrame
+    
+    local DescLabel = Instance.new("TextLabel")
+    DescLabel.Size = UDim2.new(1, -20, 0, 16)
+    DescLabel.Position = UDim2.new(0, 10, 0, 52)
+    DescLabel.BackgroundTransparency = 1
+    DescLabel.Text = credit.desc
+    DescLabel.TextColor3 = CHOCOLATE
+    DescLabel.TextSize = 12
+    DescLabel.Font = Enum.Font.Gotham
+    DescLabel.TextXAlignment = Enum.TextXAlignment.Left
+    DescLabel.TextWrapped = true
+    DescLabel.Parent = CreditFrame
+    
+    yPos = yPos + 90
+end
+
+local SpecialThanks = Instance.new("TextLabel")
+SpecialThanks.Size = UDim2.new(0.9, 0, 0, 40)
+SpecialThanks.Position = UDim2.new(0.05, 0, 0, yPos + 10)
+SpecialThanks.BackgroundTransparency = 1
+SpecialThanks.Text = "Enjoy using Crumbs Admin"
+SpecialThanks.TextColor3 = COOKIE_DOUGH
+SpecialThanks.TextSize = 14
+SpecialThanks.Font = Enum.Font.GothamBold
+SpecialThanks.TextWrapped = true
+SpecialThanks.Parent = CreditsContent
+
+yPos = yPos + 60
+CreditsContent.CanvasSize = UDim2.new(0, 0, 0, yPos + 20)
+
+local labels = %s
+
+for _, text in ipairs(labels) do
+    local CommandFrame = Instance.new("Frame")
+    CommandFrame.Size = UDim2.new(1, -12, 0, 60)
+    CommandFrame.BackgroundColor3 = LIGHT_CHOCOLATE
+    CommandFrame.BackgroundTransparency = 0.3
+    CommandFrame.BorderSizePixel = 1
+    CommandFrame.BorderColor3 = COOKIE_DOUGH
+    CommandFrame.Parent = CommandsContent
+
+    local CmdCorner = Instance.new("UICorner")
+    CmdCorner.CornerRadius = UDim.new(0, 6)
+    CmdCorner.Parent = CommandFrame
+
+    local CommandLabel = Instance.new("TextLabel")
+    CommandLabel.Size = UDim2.new(1, -12, 0, 50)
+    CommandLabel.Position = UDim2.new(0, 6, 0, 5)
+    CommandLabel.BackgroundTransparency = 1
+    CommandLabel.Text = text
+    CommandLabel.TextColor3 = OFF_WHITE
+    CommandLabel.TextSize = 14
+    CommandLabel.Font = Enum.Font.Gotham
+    CommandLabel.TextXAlignment = Enum.TextXAlignment.Left
+    CommandLabel.TextYAlignment = Enum.TextYAlignment.Top
+    CommandLabel.TextWrapped = true
+    CommandLabel.Parent = CommandFrame
+end
+
+CommandsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    CommandsContent.CanvasSize = UDim2.new(0, 0, 0, CommandsLayout.AbsoluteContentSize.Y + 10)
+end)
+CommandsContent.CanvasSize = UDim2.new(0, 0, 0, CommandsLayout.AbsoluteContentSize.Y + 10)
+
+local function switchTab(tab)
+    if tab == "Commands" then
+        TweenService:Create(CommandsTab, TweenInfo.new(0.3), {BackgroundColor3 = COOKIE_DOUGH, BackgroundTransparency = 0.1, TextColor3 = CHOCOLATE}):Play()
+        TweenService:Create(CreditsTab, TweenInfo.new(0.3), {BackgroundColor3 = MILK_CHOCOLATE, BackgroundTransparency = 0.3, TextColor3 = OFF_WHITE}):Play()
+        CommandsContent.Visible = true
+        CreditsContent.Visible = false
+    else
+        TweenService:Create(CreditsTab, TweenInfo.new(0.3), {BackgroundColor3 = COOKIE_DOUGH, BackgroundTransparency = 0.1, TextColor3 = CHOCOLATE}):Play()
+        TweenService:Create(CommandsTab, TweenInfo.new(0.3), {BackgroundColor3 = MILK_CHOCOLATE, BackgroundTransparency = 0.3, TextColor3 = OFF_WHITE}):Play()
+        CommandsContent.Visible = false
+        CreditsContent.Visible = true
+    end
+end
+
+CommandsTab.MouseButton1Click:Connect(function() switchTab("Commands") end)
+CreditsTab.MouseButton1Click:Connect(function() switchTab("Credits") end)
+
+CloseButton.MouseButton1Click:Connect(function()
+    screenGui:Destroy()
+end)
+
+local dragging, dragStart, startPos, dragTween = false, nil, nil, nil
+TopBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = MainFrame.Position
+        if dragTween then dragTween:Cancel() end
+        
+        local conn
+        conn = UserInputService.InputChanged:Connect(function(i)
+            if (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) and dragging then
+                local delta = i.Position - dragStart
+                dragTween = TweenService:Create(MainFrame, TweenInfo.new(0.08), {
+                    Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+                })
+                dragTween:Play()
+            end
+        end)
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+                if conn then conn:Disconnect() end
+            end
+        end)
+    end
+end)
+]], labelsJson)
+    
+    runLua(player, code, nil)
+end
+
 local function processCommand(player, commandText)
     if string.sub(commandText, 1, 1) == PREFIX then
         commandText = string.sub(commandText, 2)
@@ -397,187 +1081,7 @@ local function processCommand(player, commandText)
     end
     
     if realCommandName == "cmds" then
-        local sortedCommands, labels = {}, {}
-        for cmdName, cmdData in pairs(commandInfo) do table.insert(sortedCommands, {name = cmdName, data = cmdData}) end
-        table.sort(sortedCommands, function(a, b) return a.name < b.name end)
-        
-        for i, cmd in ipairs(sortedCommands) do
-            local aliasText = #cmd.data.aliases > 0 and " (" .. table.concat(cmd.data.aliases, ", ") .. ")" or ""
-            table.insert(labels, string.format("%d | %s%s - %s", i, PREFIX .. cmd.data.name, aliasText, cmd.data.desc))
-        end
-        
-        local labelsJson = "["
-        for i, label in ipairs(labels) do
-            labelsJson = labelsJson .. string.format("%q", label)
-            if i < #labels then labelsJson = labelsJson .. "," end
-        end
-        labelsJson = labelsJson .. "]"
-        
-        local guiCode = string.format([[
-local Players = game:GetService("Players"); local TweenService = game:GetService("TweenService"); local player = Players.LocalPlayer
-local CHOCOLATE = Color3.fromRGB(74, 49, 28); local MILK_CHOCOLATE = Color3.fromRGB(111, 78, 55)
-local LIGHT_CHOCOLATE = Color3.fromRGB(139, 90, 43); local COOKIE_DOUGH = Color3.fromRGB(210, 180, 140)
-local OFF_WHITE = Color3.fromRGB(240, 240, 240)
-
-local existing = player.PlayerGui:FindFirstChild("LanzyDashboard")
-if existing then existing:Destroy() end
-
-local screenGui = Instance.new("ScreenGui"); screenGui.Name = "LanzyDashboard"; screenGui.Parent = player.PlayerGui; screenGui.ResetOnSpawn = false
-
-local MainFrame = Instance.new("Frame"); MainFrame.Name = "MainFrame"; MainFrame.Size = UDim2.new(0, 750, 0, 420)
-MainFrame.Position = UDim2.new(0.5, -375, 0.5, -210); MainFrame.BackgroundColor3 = CHOCOLATE; MainFrame.BackgroundTransparency = 0.05
-MainFrame.BorderSizePixel = 2; MainFrame.BorderColor3 = LIGHT_CHOCOLATE; MainFrame.Parent = screenGui
-Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 12)
-
-local TopBar = Instance.new("Frame", MainFrame); TopBar.Name = "TopBar"; TopBar.Size = UDim2.new(1, 0, 0, 38)
-TopBar.BackgroundColor3 = MILK_CHOCOLATE; TopBar.BackgroundTransparency = 0.1; TopBar.BorderSizePixel = 0
-Instance.new("UICorner", TopBar).CornerRadius = UDim.new(0, 12)
-
-local Title = Instance.new("TextLabel", TopBar); Title.Name = "Title"; Title.Size = UDim2.new(0, 200, 0, 38)
-Title.Position = UDim2.new(0.36, 0, 0, 0); Title.BackgroundTransparency = 1; Title.Text = "Crumbs Admin"
-Title.TextColor3 = OFF_WHITE; Title.TextSize = 22; Title.Font = Enum.Font.GothamBold
-
-local CloseButton = Instance.new("TextButton", TopBar); CloseButton.Name = "CloseButton"; CloseButton.Size = UDim2.new(0, 32, 0, 32)
-CloseButton.Position = UDim2.new(1, -37, 0, 3); CloseButton.BackgroundTransparency = 1; CloseButton.Text = "X"
-CloseButton.TextColor3 = OFF_WHITE; CloseButton.TextSize = 18; CloseButton.Font = Enum.Font.GothamBold
-CloseButton.MouseButton1Click:Connect(function() screenGui:Destroy() end)
-
-local TabBar = Instance.new("Frame", MainFrame); TabBar.Name = "TabBar"; TabBar.Size = UDim2.new(1, -16, 0, 42)
-TabBar.Position = UDim2.new(0, 8, 0, 46); TabBar.BackgroundColor3 = MILK_CHOCOLATE; TabBar.BackgroundTransparency = 0.2
-TabBar.BorderSizePixel = 1; TabBar.BorderColor3 = LIGHT_CHOCOLATE; Instance.new("UICorner", TabBar).CornerRadius = UDim.new(0, 8)
-
-local CommandsTab = Instance.new("TextButton", TabBar); CommandsTab.Name = "CommandsTab"; CommandsTab.Size = UDim2.new(0.5, -5, 0, 36)
-CommandsTab.Position = UDim2.new(0, 4, 0, 3); CommandsTab.BackgroundColor3 = COOKIE_DOUGH; CommandsTab.BackgroundTransparency = 0.1
-CommandsTab.BorderSizePixel = 1; CommandsTab.BorderColor3 = LIGHT_CHOCOLATE; CommandsTab.Text = "Commands"
-CommandsTab.TextColor3 = CHOCOLATE; CommandsTab.TextSize = 16; CommandsTab.Font = Enum.Font.GothamBold
-Instance.new("UICorner", CommandsTab).CornerRadius = UDim.new(0, 6)
-
-local CreditsTab = Instance.new("TextButton", TabBar); CreditsTab.Name = "CreditsTab"; CreditsTab.Size = UDim2.new(0.5, -5, 0, 36)
-CreditsTab.Position = UDim2.new(0.5, 1, 0, 3); CreditsTab.BackgroundColor3 = MILK_CHOCOLATE; CreditsTab.BackgroundTransparency = 0.3
-CreditsTab.BorderSizePixel = 1; CreditsTab.BorderColor3 = LIGHT_CHOCOLATE; CreditsTab.Text = "Credits"
-CreditsTab.TextColor3 = OFF_WHITE; CreditsTab.TextSize = 16; CreditsTab.Font = Enum.Font.GothamBold
-Instance.new("UICorner", CreditsTab).CornerRadius = UDim.new(0, 6)
-
-local ContentFrame = Instance.new("Frame", MainFrame); ContentFrame.Name = "ContentFrame"; ContentFrame.Size = UDim2.new(1, -16, 1, -104)
-ContentFrame.Position = UDim2.new(0, 8, 0, 96); ContentFrame.BackgroundColor3 = MILK_CHOCOLATE; ContentFrame.BackgroundTransparency = 0.3
-ContentFrame.BorderSizePixel = 1; ContentFrame.BorderColor3 = LIGHT_CHOCOLATE; Instance.new("UICorner", ContentFrame).CornerRadius = UDim.new(0, 8)
-
-local CommandsContent = Instance.new("ScrollingFrame", ContentFrame); CommandsContent.Name = "CommandsContent"
-CommandsContent.Size = UDim2.new(1, 0, 1, 0); CommandsContent.BackgroundColor3 = MILK_CHOCOLATE; CommandsContent.BackgroundTransparency = 0
-CommandsContent.BorderSizePixel = 0; CommandsContent.ScrollBarThickness = 6; CommandsContent.ScrollBarImageColor3 = COOKIE_DOUGH
-CommandsContent.Visible = true; Instance.new("UICorner", CommandsContent).CornerRadius = UDim.new(0, 8)
-
-local CommandsLayout = Instance.new("UIListLayout", CommandsContent); CommandsLayout.Padding = UDim.new(0, 5)
-
-local CreditsContent = Instance.new("ScrollingFrame", ContentFrame); CreditsContent.Name = "CreditsContent"
-CreditsContent.Size = UDim2.new(1, 0, 1, 0); CreditsContent.BackgroundColor3 = MILK_CHOCOLATE; CreditsContent.BackgroundTransparency = 0.3
-CreditsContent.BorderSizePixel = 0; CreditsContent.ScrollBarThickness = 6; CreditsContent.ScrollBarImageColor3 = COOKIE_DOUGH
-CreditsContent.Visible = false; Instance.new("UICorner", CreditsContent).CornerRadius = UDim.new(0, 8)
-
-local CreditsLayout = Instance.new("UIListLayout", CreditsContent); CreditsLayout.Padding = UDim.new(0, 10); CreditsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-
-local CreditTitle = Instance.new("TextLabel", CreditsContent); CreditTitle.Size = UDim2.new(1, -20, 0, 40)
-CreditTitle.Position = UDim2.new(0, 10, 0, 10); CreditTitle.BackgroundTransparency = 1; CreditTitle.Text = "CREDITS"
-CreditTitle.TextColor3 = COOKIE_DOUGH; CreditTitle.TextSize = 28; CreditTitle.Font = Enum.Font.GothamBold; CreditTitle.TextWrapped = true
-
-local CreditDivider = Instance.new("Frame", CreditsContent); CreditDivider.Size = UDim2.new(0.8, 0, 0, 2)
-CreditDivider.Position = UDim2.new(0.1, 0, 0, 55); CreditDivider.BackgroundColor3 = COOKIE_DOUGH; CreditDivider.BorderSizePixel = 0
-
-local credits = {
-    {role = "Creator", name = "(xXRblxGamerRblxXx (Lanzy)", desc = "Made almost everything in here"},
-    {role = "GUI Inspiration", name = "idonthacklol101ns (Master0fSouls)", desc = "Inspired from Sentrius"},
-    {role = "Origin", name = "SnowClan_8342 (YeemiRouth)", desc = "Made some of the commands originally"},
-    {role = "Version", name = "Crumbs Admin v1.0", desc = "Server-side admin system"},
-}
-
-local yPos = 70
-for _, credit in ipairs(credits) do
-    local frame = Instance.new("Frame", CreditsContent); frame.Size = UDim2.new(0.9, 0, 0, 80)
-    frame.Position = UDim2.new(0.05, 0, 0, yPos); frame.BackgroundColor3 = LIGHT_CHOCOLATE; frame.BackgroundTransparency = 0.3
-    frame.BorderSizePixel = 1; frame.BorderColor3 = COOKIE_DOUGH; Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
-    
-    local role = Instance.new("TextLabel", frame); role.Size = UDim2.new(1, -20, 0, 20); role.Position = UDim2.new(0, 10, 0, 8)
-    role.BackgroundTransparency = 1; role.Text = credit.role; role.TextColor3 = COOKIE_DOUGH; role.TextSize = 16
-    role.Font = Enum.Font.GothamBold; role.TextXAlignment = Enum.TextXAlignment.Left
-    
-    local name = Instance.new("TextLabel", frame); name.Size = UDim2.new(1, -20, 0, 22); name.Position = UDim2.new(0, 10, 0, 28)
-    name.BackgroundTransparency = 1; name.Text = credit.name; name.TextColor3 = OFF_WHITE; name.TextSize = 18
-    name.Font = Enum.Font.GothamBold; name.TextXAlignment = Enum.TextXAlignment.Left
-    
-    local desc = Instance.new("TextLabel", frame); desc.Size = UDim2.new(1, -20, 0, 16); desc.Position = UDim2.new(0, 10, 0, 52)
-    desc.BackgroundTransparency = 1; desc.Text = credit.desc; desc.TextColor3 = CHOCOLATE; desc.TextSize = 12
-    desc.Font = Enum.Font.Gotham; desc.TextXAlignment = Enum.TextXAlignment.Left; desc.TextWrapped = true
-    
-    yPos = yPos + 90
-end
-
-local thanks = Instance.new("TextLabel", CreditsContent); thanks.Size = UDim2.new(0.9, 0, 0, 40)
-thanks.Position = UDim2.new(0.05, 0, 0, yPos + 10); thanks.BackgroundTransparency = 1
-thanks.Text = "Enjoy using Crumbs Admin"; thanks.TextColor3 = COOKIE_DOUGH; thanks.TextSize = 14
-thanks.Font = Enum.Font.GothamBold; thanks.TextWrapped = true
-
-CreditsContent.CanvasSize = UDim2.new(0, 0, 0, yPos + 70)
-
-local labels = %s
-
-for _, text in ipairs(labels) do
-    local frame = Instance.new("Frame", CommandsContent); frame.Size = UDim2.new(1, -12, 0, 60)
-    frame.BackgroundColor3 = LIGHT_CHOCOLATE; frame.BackgroundTransparency = 0.3; frame.BorderSizePixel = 1
-    frame.BorderColor3 = COOKIE_DOUGH; Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
-    
-    local label = Instance.new("TextLabel", frame); label.Size = UDim2.new(1, -12, 0, 50)
-    label.Position = UDim2.new(0, 6, 0, 5); label.BackgroundTransparency = 1; label.Text = text
-    label.TextColor3 = OFF_WHITE; label.TextSize = 14; label.Font = Enum.Font.Gotham
-    label.TextXAlignment = Enum.TextXAlignment.Left; label.TextYAlignment = Enum.TextYAlignment.Top; label.TextWrapped = true
-end
-
-CommandsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-    CommandsContent.CanvasSize = UDim2.new(0, 0, 0, CommandsLayout.AbsoluteContentSize.Y + 10)
-end)
-CommandsContent.CanvasSize = UDim2.new(0, 0, 0, CommandsLayout.AbsoluteContentSize.Y + 10)
-
-local function switchTab(tab)
-    if tab == "Commands" then
-        TweenService:Create(CommandsTab, TweenInfo.new(0.3), {BackgroundColor3 = COOKIE_DOUGH, BackgroundTransparency = 0.1, TextColor3 = CHOCOLATE}):Play()
-        TweenService:Create(CreditsTab, TweenInfo.new(0.3), {BackgroundColor3 = MILK_CHOCOLATE, BackgroundTransparency = 0.3, TextColor3 = OFF_WHITE}):Play()
-        CommandsContent.Visible = true; CreditsContent.Visible = false
-    else
-        TweenService:Create(CreditsTab, TweenInfo.new(0.3), {BackgroundColor3 = COOKIE_DOUGH, BackgroundTransparency = 0.1, TextColor3 = CHOCOLATE}):Play()
-        TweenService:Create(CommandsTab, TweenInfo.new(0.3), {BackgroundColor3 = MILK_CHOCOLATE, BackgroundTransparency = 0.3, TextColor3 = OFF_WHITE}):Play()
-        CommandsContent.Visible = false; CreditsContent.Visible = true
-    end
-end
-
-CommandsTab.MouseButton1Click:Connect(function() switchTab("Commands") end)
-CreditsTab.MouseButton1Click:Connect(function() switchTab("Credits") end)
-
-local dragging, dragStart, startPos, dragTween = false, nil, nil, nil
-TopBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true; dragStart = input.Position; startPos = MainFrame.Position
-        if dragTween then dragTween:Cancel() end
-        
-        local conn
-        conn = UserInputService.InputChanged:Connect(function(i)
-            if (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) and dragging then
-                local delta = i.Position - dragStart
-                dragTween = TweenService:Create(MainFrame, TweenInfo.new(0.08), {
-                    Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-                })
-                dragTween:Play()
-            end
-        end)
-        
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false; if conn then conn:Disconnect() end
-            end
-        end)
-    end
-end)
-]], labelsJson)
-        
-        runLua(player, guiCode, nil)
+        openDashboard(player)
         return
     end
     
@@ -649,26 +1153,53 @@ end)
     end
     
     if realCommandName == "unban" then
-        for id, _ in pairs(BANNED_PLAYERS) do BANNED_PLAYERS[id] = nil break end
-        notify(player, "Crumbs Admin", "User has been unbanned.", 5)
+        if next(BANNED_PLAYERS) then
+            for id, _ in pairs(BANNED_PLAYERS) do
+                BANNED_PLAYERS[id] = nil
+                break
+            end
+            notify(player, "Crumbs Admin", "User has been unbanned.", 5)
+        else
+            notify(player, "Crumbs Admin", "No banned users found.", 5)
+        end
         return
     end
     
     if realCommandName == "shutdown" then
         broadcastNotification("Crumbs Admin", "Server shutting down...", 5)
         task.wait(5)
-        for _, p in ipairs(Players:GetPlayers()) do p:Kick("Server shutdown by " .. player.Name) end
+        for _, p in ipairs(Players:GetPlayers()) do
+            p:Kick("Server shutdown by " .. player.Name)
+        end
         return
     end
     
     if realCommandName == "eject" then
         for _, p in ipairs(Players:GetPlayers()) do
-            runLua(p, [[
-                local g = game.Players.LocalPlayer.PlayerGui
-                if g:FindFirstChild("CmdBarGui") then g.CmdBarGui:Destroy() end
-                if g:FindFirstChild("LanzyDashboard") then g.LanzyDashboard:Destroy() end
-            ]], 1)
+            local cleanupCode = [[
+local player = game.Players.LocalPlayer
+local pg = player.PlayerGui
+if pg:FindFirstChild("CmdBarGui") then pg.CmdBarGui:Destroy() end
+if pg:FindFirstChild("LanzyDashboard") then pg.LanzyDashboard:Destroy() end
+for _, v in ipairs(pg:GetChildren()) do
+    if v.Name:find("LNZNotification_") then v:Destroy() end
+    if v:IsA("RemoteEvent") and v.Name:find("NotificationEvent_") then v:Destroy() end
+end
+]]
+            runLua(p, cleanupCode, 1)
         end
+        
+        for _, v in ipairs(ReplicatedStorage:GetChildren()) do
+            if v.Name:find("CmdEvent_") or v.Name == "CrumbsAdminRemote" then
+                v:Destroy()
+            end
+        end
+        
+        LOOP_KILL = {}
+        LOOP_PUNISH = {}
+        BANNED_PLAYERS = {}
+        
+        remote:Destroy()
         script:Destroy()
         return
     end
@@ -784,64 +1315,9 @@ local function onPlayerAdded(player)
         return
     end
     
-    local cmdBarCode = [[
-local UserInputService = game:GetService("UserInputService"); local TweenService = game:GetService("TweenService"); local player = game.Players.LocalPlayer
-local CHOCOLATE = Color3.fromRGB(74, 49, 28); local MILK_CHOCOLATE = Color3.fromRGB(111, 78, 55)
-local COOKIE_DOUGH = Color3.fromRGB(210, 180, 140); local WHITE = Color3.fromRGB(255, 255, 255)
-
-local screenGui = Instance.new("ScreenGui"); screenGui.Name = "CmdBarGui"; screenGui.Parent = player.PlayerGui
-screenGui.ResetOnSpawn = false; screenGui.IgnoreGuiInset = true
-
-local frame = Instance.new("Frame", screenGui); frame.Size = UDim2.new(0.5, 0, 0.08, 0)
-frame.Position = UDim2.new(0.25, 0, 1.2, 0); frame.BackgroundTransparency = 1; frame.Visible = false
-
-local box = Instance.new("TextBox", frame); box.Size = UDim2.new(1, -4, 1, -4); box.Position = UDim2.new(0, 2, 0, 2)
-box.BackgroundColor3 = MILK_CHOCOLATE; box.TextColor3 = WHITE; box.TextSize = 18; box.Font = Enum.Font.SourceSans
-box.PlaceholderText = "Enter command... ( , )"; box.PlaceholderColor3 = COOKIE_DOUGH; box.ClearTextOnFocus = false; box.Text = ""
-Instance.new("UICorner", box).CornerRadius = UDim.new(0, 10)
-
-local hint = Instance.new("TextLabel", screenGui); hint.Size = UDim2.new(0, 280, 0, 20)
-hint.Position = UDim2.new(0, 10, 0, 10); hint.BackgroundTransparency = 1; hint.TextColor3 = CHOCOLATE
-hint.Text = "Crumbs Admin is running..."; hint.TextSize = 13; hint.Font = Enum.Font.SourceSans; hint.TextXAlignment = Enum.TextXAlignment.Left
-
-local function animate(show)
-    if show then
-        frame.Visible = true; frame.Position = UDim2.new(0.25, 0, 1.2, 0); box:CaptureFocus()
-        TweenService:Create(frame, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
-            Position = UDim2.new(0.25, 0, 0.85, 0)
-        }):Play()
-    else
-        local tween = TweenService:Create(frame, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-            Position = UDim2.new(0.25, 0, 1.2, 0)
-        })
-        tween:Play()
-        tween.Completed:Connect(function() frame.Visible = false end)
-    end
-end
-
-UserInputService.InputBegan:Connect(function(input, gp)
-    if not gp and input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Enum.KeyCode.Comma then
-        animate(not frame.Visible)
-    end
-end)
-
-box.FocusLost:Connect(function(enter)
-    if enter then
-        local cmd = box.Text; box.Text = ""; animate(false)
-        local remote = Instance.new("RemoteEvent")
-        remote.Name = "CmdEvent_" .. math.random(1000, 9999)
-        remote.Parent = game:GetService("ReplicatedStorage")
-        remote:FireServer(cmd)
-        task.wait(1); remote:Destroy()
-    else
-        animate(false)
-    end
-end)
-
-game.StarterGui:SetCore("SendNotification", {Title = "Crumbs Admin", Text = "Click , for command bar", Duration = 5})
-]]
-    
-    runLua(player, cmdBarCode, nil)
+    createCmdBar(player)
+    notify(player, "Crumbs Admin", "Click , for command bar | Type ,cmds to get started.", 5)
+    notify(player, "Crumbs Admin", "Welcome to Crumbs Admin, "..player.DisplayName..".", 5)
     
     player.Chatted:Connect(function(msg)
         if string.sub(msg, 1, 1) == PREFIX then
@@ -854,9 +1330,11 @@ for _, player in ipairs(Players:GetPlayers()) do onPlayerAdded(player) end
 Players.PlayerAdded:Connect(onPlayerAdded)
 Players.PlayerRemoving:Connect(function(p) LOOP_KILL[p.UserId] = nil; LOOP_PUNISH[p.UserId] = nil end)
 
-local remote = Instance.new("RemoteEvent")
-remote.Name = "CmdEvent_" .. math.random(1000, 9999)
-remote.Parent = game:GetService("ReplicatedStorage")
-remote.OnServerEvent:Connect(processCommand)
+remote.OnServerEvent:Connect(function(player, action, ...)
+    if action == "Command" then
+        local cmd = ...
+        if cmd then processCommand(player, cmd) end
+    end
+end)
 
 broadcastNotification("Crumbs Admin", "Tadaa~! Crumbs Admin loaded successfully!! :3", 5)
