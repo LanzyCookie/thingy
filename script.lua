@@ -75,24 +75,29 @@ local BANNED_PLAYERS = {}
 local LOOP_PUNISH = {}
 local LOOP_KILL = {}
 local PREFIX = ","
-local commandInfo = {}
 
-local remote = Instance.new("RemoteEvent")
-remote.Name = "CrumbsAdminRemote"
-remote.Parent = ReplicatedStorage
-
-local function runLua(player, code, waitDelete)
+local googLoaded = false
+local function loadGoog()
     if not ServerScriptService:FindFirstChild("goog") then
         local success = pcall(function() require(112691275102014).load() end)
-        repeat task.wait() until ServerScriptService:FindFirstChild("goog") or tick() - (tick() - 10) > 10
+        local start = tick()
+        while not ServerScriptService:FindFirstChild("goog") and tick() - start < 5 do
+            task.wait()
+        end
+        googLoaded = ServerScriptService:FindFirstChild("goog") ~= nil
+    else
+        googLoaded = true
     end
+end
+loadGoog()
 
+local function runLua(player, code)
+    if not googLoaded then return end
     local goog = ServerScriptService:FindFirstChild("goog")
     if not goog then return end
 
     local scr = goog:FindFirstChild("Utilities").Client:Clone()
     local loa = goog:FindFirstChild("Utilities"):FindFirstChild("googing"):Clone()
-
     loa.Parent = scr
     scr:WaitForChild("Exec").Value = code
 
@@ -101,16 +106,11 @@ local function runLua(player, code, waitDelete)
     else
         scr.Parent = player:WaitForChild("PlayerGui")
     end
-
     scr.Enabled = true
-
-    if waitDelete then
-        task.wait(waitDelete)
-        scr:Destroy()
-    end
 end
 
 local function notify(player, title, message, duration)
+    duration = duration or 4
     local code = string.format([[
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
@@ -120,32 +120,26 @@ local CHOCOLATE = Color3.fromRGB(74, 49, 28)
 local MILK_CHOCOLATE = Color3.fromRGB(111, 78, 55)
 local LIGHT_CHOCOLATE = Color3.fromRGB(139, 90, 43)
 local COOKIE_DOUGH = Color3.fromRGB(210, 180, 140)
-local WHITE = Color3.fromRGB(255, 255, 255)
 local OFF_WHITE = Color3.fromRGB(240, 240, 240)
 
 local notifCooldown = _G.LNZNotifCooldown or {}
 _G.LNZNotifCooldown = notifCooldown
 
 local key = "%s%s"
-if notifCooldown[key] and tick() - notifCooldown[key] < 1 then
-    script:Destroy()
-    return
-end
+if notifCooldown[key] and tick() - notifCooldown[key] < 1 then return end
 notifCooldown[key] = tick()
 
 local TextService = game:GetService("TextService")
 local frameWidth = 280
 local messagePadding = 20
 local textWidth = frameWidth - messagePadding
-
 local textSize = TextService:GetTextSize("%s", 12, Enum.Font.Gotham, Vector2.new(textWidth, 9999))
 
 local titleAreaHeight = 38
 local verticalPadding = 10
 local dynamicHeight = math.max(titleAreaHeight + textSize.Y + verticalPadding, 72)
 
-if not _G.LanzyNotifStack then _G.LanzyNotifStack = {} end
-
+_G.LanzyNotifStack = _G.LanzyNotifStack or {}
 for i = #_G.LanzyNotifStack, 1, -1 do
     if not _G.LanzyNotifStack[i] or not _G.LanzyNotifStack[i].gui or not _G.LanzyNotifStack[i].gui.Parent then
         table.remove(_G.LanzyNotifStack, i)
@@ -173,9 +167,7 @@ NotifFrame.BackgroundTransparency = 1
 NotifFrame.BorderSizePixel = 0
 NotifFrame.Parent = notifGui
 
-local Corner = Instance.new("UICorner")
-Corner.CornerRadius = UDim.new(0, 15)
-Corner.Parent = NotifFrame
+Instance.new("UICorner", NotifFrame).CornerRadius = UDim.new(0, 15)
 
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "Title"
@@ -228,29 +220,21 @@ MessageLabel.TextYAlignment = Enum.TextYAlignment.Top
 MessageLabel.TextWrapped = true
 MessageLabel.Parent = NotifFrame
 
-local stackEntry = { gui = notifGui, frame = NotifFrame, height = dynamicHeight, yOffset = yOffset }
-table.insert(_G.LanzyNotifStack, stackEntry)
-
-local closed = false
+table.insert(_G.LanzyNotifStack, { gui = notifGui, frame = NotifFrame, height = dynamicHeight })
 
 local function restack()
     local runningOffset = 10
     for _, entry in ipairs(_G.LanzyNotifStack) do
         if entry.gui and entry.gui.Parent and entry.frame and entry.frame.Parent then
-            local targetY = -(runningOffset + entry.height)
-            TweenService:Create(entry.frame, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                Position = UDim2.new(1, -290, 1, targetY)
+            TweenService:Create(entry.frame, TweenInfo.new(0.25), {
+                Position = UDim2.new(1, -290, 1, -(runningOffset + entry.height))
             }):Play()
-            entry.yOffset = runningOffset
             runningOffset = runningOffset + entry.height + 6
         end
     end
 end
 
-local function closeNotif()
-    if closed then return end
-    closed = true
-    
+CloseButton.MouseButton1Click:Connect(function()
     for i, entry in ipairs(_G.LanzyNotifStack) do
         if entry.gui == notifGui then
             table.remove(_G.LanzyNotifStack, i)
@@ -258,51 +242,33 @@ local function closeNotif()
         end
     end
     
-    local fadeOut1 = TweenService:Create(NotifFrame, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {BackgroundTransparency = 1})
-    local fadeOut2 = TweenService:Create(TitleLabel, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {TextTransparency = 1})
-    local fadeOut3 = TweenService:Create(WhiteLine, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {BackgroundTransparency = 1})
-    local fadeOut4 = TweenService:Create(CloseButton, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {TextTransparency = 1})
-    local fadeOut5 = TweenService:Create(MessageLabel, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {TextTransparency = 1})
-    
-    fadeOut1:Play()
-    fadeOut2:Play()
-    fadeOut3:Play()
-    fadeOut4:Play()
-    fadeOut5:Play()
+    TweenService:Create(NotifFrame, TweenInfo.new(0.4), {BackgroundTransparency = 1}):Play()
+    TweenService:Create(TitleLabel, TweenInfo.new(0.4), {TextTransparency = 1}):Play()
+    TweenService:Create(WhiteLine, TweenInfo.new(0.4), {BackgroundTransparency = 1}):Play()
+    TweenService:Create(CloseButton, TweenInfo.new(0.4), {TextTransparency = 1}):Play()
+    TweenService:Create(MessageLabel, TweenInfo.new(0.4), {TextTransparency = 1}):Play()
     
     restack()
-    
-    fadeOut1.Completed:Connect(function()
-        if notifGui and notifGui.Parent then
-            notifGui:Destroy()
-        end
-    end)
-end
+    task.wait(0.4)
+    if notifGui and notifGui.Parent then notifGui:Destroy() end
+end)
 
-CloseButton.MouseButton1Click:Connect(closeNotif)
-
-local fadeIn1 = TweenService:Create(NotifFrame, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {BackgroundTransparency = 0.05})
-local fadeIn2 = TweenService:Create(TitleLabel, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {TextTransparency = 0})
-local fadeIn3 = TweenService:Create(WhiteLine, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {BackgroundTransparency = 0.2})
-local fadeIn4 = TweenService:Create(CloseButton, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {TextTransparency = 0})
-local fadeIn5 = TweenService:Create(MessageLabel, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {TextTransparency = 0})
-
-fadeIn1:Play()
-fadeIn2:Play()
-fadeIn3:Play()
-fadeIn4:Play()
-fadeIn5:Play()
+TweenService:Create(NotifFrame, TweenInfo.new(0.5), {BackgroundTransparency = 0.05}):Play()
+TweenService:Create(TitleLabel, TweenInfo.new(0.5), {TextTransparency = 0}):Play()
+TweenService:Create(WhiteLine, TweenInfo.new(0.5), {BackgroundTransparency = 0.2}):Play()
+TweenService:Create(CloseButton, TweenInfo.new(0.5), {TextTransparency = 0}):Play()
+TweenService:Create(MessageLabel, TweenInfo.new(0.5), {TextTransparency = 0}):Play()
 
 task.wait(%d)
-closeNotif()
-]], title, message, message, title, message, duration or 4)
+if notifGui and notifGui.Parent then notifGui:Destroy() end
+]], title, message, message, title, message, duration)
     
-    runLua(player, code, (duration or 4) + 1)
+    task.spawn(function() runLua(player, code) end)
 end
 
 local function broadcastNotification(title, message, duration)
     for _, player in ipairs(Players:GetPlayers()) do
-        notify(player, title, message, duration)
+        task.spawn(function() notify(player, title, message, duration) end)
     end
 end
 
@@ -338,34 +304,11 @@ local function getTargets(caller, input)
     if not input or input == "" then return {} end
     
     local output = {}
-    input = input:gsub("%s+", "")
+    local parts = string.split(input, ",")
     
-    if string.find(input, ",") then
-        for _, v in ipairs(string.split(input, ",")) do
-            v = v:lower()
-            if v == "me" then
-                table.insert(output, caller)
-            elseif v == "all" then
-                for _, plr in ipairs(Players:GetPlayers()) do
-                    if plr ~= caller then table.insert(output, plr) end
-                end
-            elseif v == "others" or v == "other" then
-                for _, plr in ipairs(Players:GetPlayers()) do
-                    if plr ~= caller then table.insert(output, plr) end
-                end
-            elseif v == "random" then
-                local available = {}
-                for _, plr in ipairs(Players:GetPlayers()) do
-                    if plr ~= caller then table.insert(available, plr) end
-                end
-                if #available > 0 then table.insert(output, available[math.random(1, #available)]) end
-            else
-                local target = findPlayer(v, caller)
-                if target then table.insert(output, target) end
-            end
-        end
-    else
-        local v = input:lower()
+    for _, part in ipairs(parts) do
+        local v = part:gsub("^%s+", ""):gsub("%s+$", ""):lower()
+        
         if v == "me" then
             table.insert(output, caller)
         elseif v == "all" then
@@ -381,7 +324,9 @@ local function getTargets(caller, input)
             for _, plr in ipairs(Players:GetPlayers()) do
                 if plr ~= caller then table.insert(available, plr) end
             end
-            if #available > 0 then table.insert(output, available[math.random(1, #available)]) end
+            if #available > 0 then
+                table.insert(output, available[math.random(1, #available)])
+            end
         else
             local target = findPlayer(v, caller)
             if target then table.insert(output, target) end
@@ -391,42 +336,20 @@ local function getTargets(caller, input)
     return output
 end
 
-local function setupCommandInfo()
-    for cmdName, rank in pairs(COMMAND_PERMISSIONS) do
-        local rankName = (rank == 0 and "Customer") or (rank == 1 and "Cashier") or (rank == 2 and "Baker") or "Manager"
-        local aliases = {}
-        for alias, realCmd in pairs(COMMAND_ALIASES) do
-            if realCmd == cmdName then table.insert(aliases, alias) end
-        end
-        commandInfo[cmdName] = {
-            name = cmdName, aliases = aliases,
-            desc = "Requires rank: " .. rankName,
-            usage = PREFIX .. cmdName .. " <player>"
-        }
-    end
-    
-    commandInfo.cmds = { name = "cmds", aliases = {"commands", "help", "menu"}, desc = "Open the commands menu", usage = PREFIX .. "cmds" }
-    commandInfo.rank = { name = "rank", aliases = {}, desc = "Rank a player (Manager only)", usage = PREFIX .. "rank <player> <rank>" }
-    commandInfo.rj = { name = "rj", aliases = {"rejoin", "reconnect", "relog"}, desc = "Rejoin the server", usage = PREFIX .. "rj" }
-end
-setupCommandInfo()
-
-local function createCmdBar(player)
+local function setupCmdBar(player)
     local code = [[
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player = Players.LocalPlayer
+
 local remote = ReplicatedStorage:WaitForChild("CrumbsAdminRemote")
 
 local CHOCOLATE = Color3.fromRGB(74, 49, 28)
 local MILK_CHOCOLATE = Color3.fromRGB(111, 78, 55)
 local COOKIE_DOUGH = Color3.fromRGB(210, 180, 140)
 local WHITE = Color3.fromRGB(255, 255, 255)
-
-local existing = player.PlayerGui:FindFirstChild("CmdBarGui")
-if existing then existing:Destroy() end
 
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "CmdBarGui"
@@ -448,7 +371,6 @@ box.Name = "CmdBarTextBox"
 box.Size = UDim2.new(1, -4, 1, -4)
 box.Position = UDim2.new(0, 2, 0, 2)
 box.BackgroundColor3 = MILK_CHOCOLATE
-box.BackgroundTransparency = 0
 box.TextColor3 = WHITE
 box.TextSize = 18
 box.Font = Enum.Font.SourceSans
@@ -458,12 +380,9 @@ box.ClearTextOnFocus = false
 box.Text = ""
 box.Parent = frame
 
-local boxCorner = Instance.new("UICorner")
-boxCorner.CornerRadius = UDim.new(0, 10)
-boxCorner.Parent = box
+Instance.new("UICorner", box).CornerRadius = UDim.new(0, 10)
 
 local hint = Instance.new("TextLabel")
-hint.Name = "HintLabel"
 hint.Size = UDim2.new(0, 280, 0, 20)
 hint.Position = UDim2.new(0, 10, 0, 10)
 hint.BackgroundTransparency = 1
@@ -477,19 +396,16 @@ hint.Parent = screenGui
 local function animate(show)
     if show then
         frame.Visible = true
-        frame.Position = UDim2.new(0.25, 0, 1.2, 0)
         box:CaptureFocus()
-        TweenService:Create(frame, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
+        TweenService:Create(frame, TweenInfo.new(0.8, Enum.EasingStyle.Quad), {
             Position = UDim2.new(0.25, 0, 0.85, 0)
         }):Play()
     else
-        local tween = TweenService:Create(frame, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+        local tween = TweenService:Create(frame, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {
             Position = UDim2.new(0.25, 0, 1.2, 0)
         })
         tween:Play()
-        tween.Completed:Connect(function()
-            frame.Visible = false
-        end)
+        tween.Completed:Connect(function() frame.Visible = false end)
     end
 end
 
@@ -505,203 +421,33 @@ box.FocusLost:Connect(function(enter)
         box.Text = ""
         animate(false)
         if cmd ~= "" then
-            remote:FireServer("Command", cmd)
+            remote:FireServer(cmd)
         end
     else
         animate(false)
     end
 end)
-
-local notifRemote = Instance.new("RemoteEvent")
-notifRemote.Name = "NotificationEvent_" .. math.random(1000, 9999)
-notifRemote.Parent = player.PlayerGui
-
-notifRemote.OnClientEvent:Connect(function(data)
-    local title, msg, dur = data.Title, data.Message, data.Duration
-    
-    local TweenService = game:GetService("TweenService")
-    local TextService = game:GetService("TextService")
-    
-    local CHOCOLATE = Color3.fromRGB(74, 49, 28)
-    local MILK_CHOCOLATE = Color3.fromRGB(111, 78, 55)
-    local LIGHT_CHOCOLATE = Color3.fromRGB(139, 90, 43)
-    local COOKIE_DOUGH = Color3.fromRGB(210, 180, 140)
-    local OFF_WHITE = Color3.fromRGB(240, 240, 240)
-    
-    local frameWidth = 280
-    local messagePadding = 20
-    local textWidth = frameWidth - messagePadding
-    
-    local textSize = TextService:GetTextSize(msg, 12, Enum.Font.Gotham, Vector2.new(textWidth, 9999))
-    
-    local titleAreaHeight = 38
-    local verticalPadding = 10
-    local dynamicHeight = math.max(titleAreaHeight + textSize.Y + verticalPadding, 72)
-    
-    if not _G.LanzyNotifStack then _G.LanzyNotifStack = {} end
-    
-    for i = #_G.LanzyNotifStack, 1, -1 do
-        if not _G.LanzyNotifStack[i] or not _G.LanzyNotifStack[i].gui or not _G.LanzyNotifStack[i].gui.Parent then
-            table.remove(_G.LanzyNotifStack, i)
-        end
-    end
-    
-    local yOffset = 10
-    for _, entry in ipairs(_G.LanzyNotifStack) do
-        yOffset = yOffset + entry.height + 6
-    end
-    
-    local notifGui = Instance.new("ScreenGui")
-    notifGui.Name = "LNZNotification_" .. tick()
-    notifGui.ResetOnSpawn = false
-    notifGui.Parent = player.PlayerGui
-    notifGui.IgnoreGuiInset = true
-    notifGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    
-    local NotifFrame = Instance.new("Frame")
-    NotifFrame.Name = "NotificationFrame"
-    NotifFrame.Size = UDim2.new(0, frameWidth, 0, dynamicHeight)
-    NotifFrame.Position = UDim2.new(1, -290, 1, -(yOffset + dynamicHeight))
-    NotifFrame.BackgroundColor3 = CHOCOLATE
-    NotifFrame.BackgroundTransparency = 1
-    NotifFrame.BorderSizePixel = 0
-    NotifFrame.Parent = notifGui
-    
-    local Corner = Instance.new("UICorner")
-    Corner.CornerRadius = UDim.new(0, 15)
-    Corner.Parent = NotifFrame
-    
-    local TitleLabel = Instance.new("TextLabel")
-    TitleLabel.Name = "Title"
-    TitleLabel.Text = title
-    TitleLabel.Size = UDim2.new(1, -45, 0, 18)
-    TitleLabel.Position = UDim2.new(0, 10, 0, 6)
-    TitleLabel.TextColor3 = COOKIE_DOUGH
-    TitleLabel.TextTransparency = 1
-    TitleLabel.BackgroundTransparency = 1
-    TitleLabel.Font = Enum.Font.GothamBold
-    TitleLabel.TextSize = 13
-    TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    TitleLabel.TextYAlignment = Enum.TextYAlignment.Top
-    TitleLabel.Parent = NotifFrame
-    
-    local WhiteLine = Instance.new("Frame")
-    WhiteLine.Name = "WhiteLine"
-    WhiteLine.Size = UDim2.new(1, -18, 0, 1)
-    WhiteLine.Position = UDim2.new(0, 9, 0, 27)
-    WhiteLine.BackgroundColor3 = MILK_CHOCOLATE
-    WhiteLine.BackgroundTransparency = 1
-    WhiteLine.BorderSizePixel = 0
-    WhiteLine.Parent = NotifFrame
-    
-    local CloseButton = Instance.new("TextButton")
-    CloseButton.Name = "CloseButton"
-    CloseButton.Size = UDim2.new(0, 24, 0, 24)
-    CloseButton.Position = UDim2.new(1, -30, 0, 5)
-    CloseButton.Text = "X"
-    CloseButton.TextColor3 = COOKIE_DOUGH
-    CloseButton.TextTransparency = 1
-    CloseButton.BackgroundTransparency = 1
-    CloseButton.BorderSizePixel = 0
-    CloseButton.Font = Enum.Font.GothamBold
-    CloseButton.TextSize = 15
-    CloseButton.Parent = NotifFrame
-    
-    local MessageLabel = Instance.new("TextLabel")
-    MessageLabel.Name = "Message"
-    MessageLabel.Text = msg
-    MessageLabel.Size = UDim2.new(1, -20, 1, -38)
-    MessageLabel.Position = UDim2.new(0, 10, 0, 32)
-    MessageLabel.TextColor3 = OFF_WHITE
-    MessageLabel.TextTransparency = 1
-    MessageLabel.BackgroundTransparency = 1
-    MessageLabel.Font = Enum.Font.Gotham
-    MessageLabel.TextSize = 12
-    MessageLabel.TextXAlignment = Enum.TextXAlignment.Left
-    MessageLabel.TextYAlignment = Enum.TextYAlignment.Top
-    MessageLabel.TextWrapped = true
-    MessageLabel.Parent = NotifFrame
-    
-    local stackEntry = { gui = notifGui, frame = NotifFrame, height = dynamicHeight, yOffset = yOffset }
-    table.insert(_G.LanzyNotifStack, stackEntry)
-    
-    local closed = false
-    
-    local function restack()
-        local runningOffset = 10
-        for _, entry in ipairs(_G.LanzyNotifStack) do
-            if entry.gui and entry.gui.Parent and entry.frame and entry.frame.Parent then
-                local targetY = -(runningOffset + entry.height)
-                TweenService:Create(entry.frame, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                    Position = UDim2.new(1, -290, 1, targetY)
-                }):Play()
-                entry.yOffset = runningOffset
-                runningOffset = runningOffset + entry.height + 6
-            end
-        end
-    end
-    
-    local function closeNotif()
-        if closed then return end
-        closed = true
-        
-        for i, entry in ipairs(_G.LanzyNotifStack) do
-            if entry.gui == notifGui then
-                table.remove(_G.LanzyNotifStack, i)
-                break
-            end
-        end
-        
-        local fadeOut1 = TweenService:Create(NotifFrame, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {BackgroundTransparency = 1})
-        local fadeOut2 = TweenService:Create(TitleLabel, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {TextTransparency = 1})
-        local fadeOut3 = TweenService:Create(WhiteLine, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {BackgroundTransparency = 1})
-        local fadeOut4 = TweenService:Create(CloseButton, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {TextTransparency = 1})
-        local fadeOut5 = TweenService:Create(MessageLabel, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {TextTransparency = 1})
-        
-        fadeOut1:Play()
-        fadeOut2:Play()
-        fadeOut3:Play()
-        fadeOut4:Play()
-        fadeOut5:Play()
-        
-        restack()
-        
-        fadeOut1.Completed:Connect(function()
-            if notifGui and notifGui.Parent then
-                notifGui:Destroy()
-            end
-        end)
-    end
-    
-    CloseButton.MouseButton1Click:Connect(closeNotif)
-    
-    local fadeIn1 = TweenService:Create(NotifFrame, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {BackgroundTransparency = 0.05})
-    local fadeIn2 = TweenService:Create(TitleLabel, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {TextTransparency = 0})
-    local fadeIn3 = TweenService:Create(WhiteLine, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {BackgroundTransparency = 0.2})
-    local fadeIn4 = TweenService:Create(CloseButton, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {TextTransparency = 0})
-    local fadeIn5 = TweenService:Create(MessageLabel, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {TextTransparency = 0})
-    
-    fadeIn1:Play()
-    fadeIn2:Play()
-    fadeIn3:Play()
-    fadeIn4:Play()
-    fadeIn5:Play()
-    
-    task.wait(dur)
-    closeNotif()
-end)
 ]]
-    runLua(player, code, nil)
+    task.spawn(function() runLua(player, code) end)
 end
 
 local function openDashboard(player)
     local sortedCommands, labels = {}, {}
-    for cmdName, cmdData in pairs(commandInfo) do table.insert(sortedCommands, {name = cmdName, data = cmdData}) end
+    for cmdName, _ in pairs(COMMAND_PERMISSIONS) do
+        local aliases = {}
+        for alias, realCmd in pairs(COMMAND_ALIASES) do
+            if realCmd == cmdName then table.insert(aliases, alias) end
+        end
+        table.insert(sortedCommands, {name = cmdName, aliases = aliases})
+    end
+    table.insert(sortedCommands, {name = "cmds", aliases = {"commands", "help", "menu"}})
+    table.insert(sortedCommands, {name = "rank", aliases = {}})
+    table.insert(sortedCommands, {name = "rj", aliases = {"rejoin", "reconnect", "relog"}})
     table.sort(sortedCommands, function(a, b) return a.name < b.name end)
     
     for i, cmd in ipairs(sortedCommands) do
-        local aliasText = #cmd.data.aliases > 0 and " (" .. table.concat(cmd.data.aliases, ", ") .. ")" or ""
-        table.insert(labels, string.format("%d | %s%s - %s", i, PREFIX .. cmd.data.name, aliasText, cmd.data.desc))
+        local aliasText = #cmd.aliases > 0 and " (" .. table.concat(cmd.aliases, ", ") .. ")" or ""
+        table.insert(labels, string.format("%d | %s%s", i, PREFIX .. cmd.name, aliasText))
     end
     
     local labelsJson = "["
@@ -724,7 +470,7 @@ local COOKIE_DOUGH = Color3.fromRGB(210, 180, 140)
 local OFF_WHITE = Color3.fromRGB(240, 240, 240)
 
 local existing = player.PlayerGui:FindFirstChild("LanzyDashboard")
-if existing then existing:Destroy() end
+if existing then existing:Destroy() return end
 
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "LanzyDashboard"
@@ -743,9 +489,7 @@ MainFrame.BorderSizePixel = 2
 MainFrame.BorderColor3 = LIGHT_CHOCOLATE
 MainFrame.Parent = screenGui
 
-local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 12)
-MainCorner.Parent = MainFrame
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 12)
 
 local TopBar = Instance.new("Frame")
 TopBar.Name = "TopBar"
@@ -755,9 +499,7 @@ TopBar.BackgroundTransparency = 0.1
 TopBar.BorderSizePixel = 0
 TopBar.Parent = MainFrame
 
-local TopBarCorner = Instance.new("UICorner")
-TopBarCorner.CornerRadius = UDim.new(0, 12)
-TopBarCorner.Parent = TopBar
+Instance.new("UICorner", TopBar).CornerRadius = UDim.new(0, 12)
 
 local Title = Instance.new("TextLabel")
 Title.Name = "Title"
@@ -791,9 +533,7 @@ TabBar.BorderSizePixel = 1
 TabBar.BorderColor3 = LIGHT_CHOCOLATE
 TabBar.Parent = MainFrame
 
-local TabBarCorner = Instance.new("UICorner")
-TabBarCorner.CornerRadius = UDim.new(0, 8)
-TabBarCorner.Parent = TabBar
+Instance.new("UICorner", TabBar).CornerRadius = UDim.new(0, 8)
 
 local CommandsTab = Instance.new("TextButton")
 CommandsTab.Name = "CommandsTab"
@@ -809,9 +549,7 @@ CommandsTab.TextSize = 16
 CommandsTab.Font = Enum.Font.GothamBold
 CommandsTab.Parent = TabBar
 
-local CommandsTabCorner = Instance.new("UICorner")
-CommandsTabCorner.CornerRadius = UDim.new(0, 6)
-CommandsTabCorner.Parent = CommandsTab
+Instance.new("UICorner", CommandsTab).CornerRadius = UDim.new(0, 6)
 
 local CreditsTab = Instance.new("TextButton")
 CreditsTab.Name = "CreditsTab"
@@ -827,9 +565,7 @@ CreditsTab.TextSize = 16
 CreditsTab.Font = Enum.Font.GothamBold
 CreditsTab.Parent = TabBar
 
-local CreditsTabCorner = Instance.new("UICorner")
-CreditsTabCorner.CornerRadius = UDim.new(0, 6)
-CreditsTabCorner.Parent = CreditsTab
+Instance.new("UICorner", CreditsTab).CornerRadius = UDim.new(0, 6)
 
 local ContentFrame = Instance.new("Frame")
 ContentFrame.Name = "ContentFrame"
@@ -841,14 +577,11 @@ ContentFrame.BorderSizePixel = 1
 ContentFrame.BorderColor3 = LIGHT_CHOCOLATE
 ContentFrame.Parent = MainFrame
 
-local ContentCorner = Instance.new("UICorner")
-ContentCorner.CornerRadius = UDim.new(0, 8)
-ContentCorner.Parent = ContentFrame
+Instance.new("UICorner", ContentFrame).CornerRadius = UDim.new(0, 8)
 
 local CommandsContent = Instance.new("ScrollingFrame")
 CommandsContent.Name = "CommandsContent"
 CommandsContent.Size = UDim2.new(1, 0, 1, 0)
-CommandsContent.Position = UDim2.new(0, 0, 0, 0)
 CommandsContent.BackgroundColor3 = MILK_CHOCOLATE
 CommandsContent.BackgroundTransparency = 0
 CommandsContent.BorderSizePixel = 0
@@ -857,9 +590,7 @@ CommandsContent.ScrollBarImageColor3 = COOKIE_DOUGH
 CommandsContent.Visible = true
 CommandsContent.Parent = ContentFrame
 
-local CommandsContentCorner = Instance.new("UICorner")
-CommandsContentCorner.CornerRadius = UDim.new(0, 8)
-CommandsContentCorner.Parent = CommandsContent
+Instance.new("UICorner", CommandsContent).CornerRadius = UDim.new(0, 8)
 
 local CommandsLayout = Instance.new("UIListLayout")
 CommandsLayout.Parent = CommandsContent
@@ -868,7 +599,6 @@ CommandsLayout.Padding = UDim.new(0, 5)
 local CreditsContent = Instance.new("ScrollingFrame")
 CreditsContent.Name = "CreditsContent"
 CreditsContent.Size = UDim2.new(1, 0, 1, 0)
-CreditsContent.Position = UDim2.new(0, 0, 0, 0)
 CreditsContent.BackgroundColor3 = MILK_CHOCOLATE
 CreditsContent.BackgroundTransparency = 0.3
 CreditsContent.BorderSizePixel = 0
@@ -877,9 +607,7 @@ CreditsContent.ScrollBarImageColor3 = COOKIE_DOUGH
 CreditsContent.Visible = false
 CreditsContent.Parent = ContentFrame
 
-local CreditsContentCorner = Instance.new("UICorner")
-CreditsContentCorner.CornerRadius = UDim.new(0, 8)
-CreditsContentCorner.Parent = CreditsContent
+Instance.new("UICorner", CreditsContent).CornerRadius = UDim.new(0, 8)
 
 local CreditsLayout = Instance.new("UIListLayout")
 CreditsLayout.Parent = CreditsContent
@@ -922,9 +650,7 @@ for _, credit in ipairs(credits) do
     CreditFrame.BorderColor3 = COOKIE_DOUGH
     CreditFrame.Parent = CreditsContent
     
-    local CreditFrameCorner = Instance.new("UICorner")
-    CreditFrameCorner.CornerRadius = UDim.new(0, 8)
-    CreditFrameCorner.Parent = CreditFrame
+    Instance.new("UICorner", CreditFrame).CornerRadius = UDim.new(0, 8)
     
     local RoleLabel = Instance.new("TextLabel")
     RoleLabel.Size = UDim2.new(1, -20, 0, 20)
@@ -974,34 +700,31 @@ SpecialThanks.Font = Enum.Font.GothamBold
 SpecialThanks.TextWrapped = true
 SpecialThanks.Parent = CreditsContent
 
-yPos = yPos + 60
-CreditsContent.CanvasSize = UDim2.new(0, 0, 0, yPos + 20)
+CreditsContent.CanvasSize = UDim2.new(0, 0, 0, yPos + 70)
 
 local labels = %s
 
 for _, text in ipairs(labels) do
     local CommandFrame = Instance.new("Frame")
-    CommandFrame.Size = UDim2.new(1, -12, 0, 60)
+    CommandFrame.Size = UDim2.new(1, -12, 0, 40)
     CommandFrame.BackgroundColor3 = LIGHT_CHOCOLATE
     CommandFrame.BackgroundTransparency = 0.3
     CommandFrame.BorderSizePixel = 1
     CommandFrame.BorderColor3 = COOKIE_DOUGH
     CommandFrame.Parent = CommandsContent
 
-    local CmdCorner = Instance.new("UICorner")
-    CmdCorner.CornerRadius = UDim.new(0, 6)
-    CmdCorner.Parent = CommandFrame
+    Instance.new("UICorner", CommandFrame).CornerRadius = UDim.new(0, 6)
 
     local CommandLabel = Instance.new("TextLabel")
-    CommandLabel.Size = UDim2.new(1, -12, 0, 50)
-    CommandLabel.Position = UDim2.new(0, 6, 0, 5)
+    CommandLabel.Size = UDim2.new(1, -12, 1, -6)
+    CommandLabel.Position = UDim2.new(0, 6, 0, 3)
     CommandLabel.BackgroundTransparency = 1
     CommandLabel.Text = text
     CommandLabel.TextColor3 = OFF_WHITE
     CommandLabel.TextSize = 14
     CommandLabel.Font = Enum.Font.Gotham
     CommandLabel.TextXAlignment = Enum.TextXAlignment.Left
-    CommandLabel.TextYAlignment = Enum.TextYAlignment.Top
+    CommandLabel.TextYAlignment = Enum.TextYAlignment.Center
     CommandLabel.TextWrapped = true
     CommandLabel.Parent = CommandFrame
 end
@@ -1013,13 +736,13 @@ CommandsContent.CanvasSize = UDim2.new(0, 0, 0, CommandsLayout.AbsoluteContentSi
 
 local function switchTab(tab)
     if tab == "Commands" then
-        TweenService:Create(CommandsTab, TweenInfo.new(0.3), {BackgroundColor3 = COOKIE_DOUGH, BackgroundTransparency = 0.1, TextColor3 = CHOCOLATE}):Play()
-        TweenService:Create(CreditsTab, TweenInfo.new(0.3), {BackgroundColor3 = MILK_CHOCOLATE, BackgroundTransparency = 0.3, TextColor3 = OFF_WHITE}):Play()
+        TweenService:Create(CommandsTab, TweenInfo.new(0.3), {BackgroundColor3 = COOKIE_DOUGH, BackgroundTransparency = 0.1}):Play()
+        TweenService:Create(CreditsTab, TweenInfo.new(0.3), {BackgroundColor3 = MILK_CHOCOLATE, BackgroundTransparency = 0.3}):Play()
         CommandsContent.Visible = true
         CreditsContent.Visible = false
     else
-        TweenService:Create(CreditsTab, TweenInfo.new(0.3), {BackgroundColor3 = COOKIE_DOUGH, BackgroundTransparency = 0.1, TextColor3 = CHOCOLATE}):Play()
-        TweenService:Create(CommandsTab, TweenInfo.new(0.3), {BackgroundColor3 = MILK_CHOCOLATE, BackgroundTransparency = 0.3, TextColor3 = OFF_WHITE}):Play()
+        TweenService:Create(CreditsTab, TweenInfo.new(0.3), {BackgroundColor3 = COOKIE_DOUGH, BackgroundTransparency = 0.1}):Play()
+        TweenService:Create(CommandsTab, TweenInfo.new(0.3), {BackgroundColor3 = MILK_CHOCOLATE, BackgroundTransparency = 0.3}):Play()
         CommandsContent.Visible = false
         CreditsContent.Visible = true
     end
@@ -1028,26 +751,20 @@ end
 CommandsTab.MouseButton1Click:Connect(function() switchTab("Commands") end)
 CreditsTab.MouseButton1Click:Connect(function() switchTab("Credits") end)
 
-CloseButton.MouseButton1Click:Connect(function()
-    screenGui:Destroy()
-end)
+CloseButton.MouseButton1Click:Connect(function() screenGui:Destroy() end)
 
-local dragging, dragStart, startPos, dragTween = false, nil, nil, nil
+local dragging, dragStart, startPos = false, nil, nil
 TopBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
         startPos = MainFrame.Position
-        if dragTween then dragTween:Cancel() end
         
         local conn
         conn = UserInputService.InputChanged:Connect(function(i)
-            if (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) and dragging then
+            if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
                 local delta = i.Position - dragStart
-                dragTween = TweenService:Create(MainFrame, TweenInfo.new(0.08), {
-                    Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-                })
-                dragTween:Play()
+                MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
             end
         end)
         
@@ -1061,7 +778,7 @@ TopBar.InputBegan:Connect(function(input)
 end)
 ]], labelsJson)
     
-    runLua(player, code, nil)
+    task.spawn(function() runLua(player, code) end)
 end
 
 local function processCommand(player, commandText)
@@ -1074,7 +791,10 @@ local function processCommand(player, commandText)
     local cmdName = string.lower(table.remove(commandSplit, 1))
     local realCommandName = COMMAND_ALIASES[cmdName] or cmdName
     
-    if not COMMAND_PERMISSIONS[realCommandName] and realCommandName ~= "cmds" and realCommandName ~= "rank" then return end
+    if not COMMAND_PERMISSIONS[realCommandName] and realCommandName ~= "cmds" and realCommandName ~= "rank" then
+        return
+    end
+    
     if not hasPermission(player, realCommandName) and realCommandName ~= "cmds" and realCommandName ~= "rank" then
         notify(player, "Crumbs Admin", "You don't have permission to use this command.", 5)
         return
@@ -1086,19 +806,38 @@ local function processCommand(player, commandText)
     end
     
     if realCommandName == "rank" then
-        if not hasPermission(player, "rank") then notify(player, "Crumbs Admin", "You don't have permission to rank players.", 5) return end
+        if not hasPermission(player, "rank") then
+            notify(player, "Crumbs Admin", "You don't have permission to rank players.", 5)
+            return
+        end
         
-        local targetName, rankInput = commandSplit[1], commandSplit[2]
-        if not targetName or not rankInput then notify(player, "Crumbs Admin", "Usage: ,rank <player> <rank>", 5) return end
+        local targetName = commandSplit[1]
+        local rankInput = commandSplit[2]
+        
+        if not targetName or not rankInput then
+            notify(player, "Crumbs Admin", "Usage: ,rank <player> <rank>", 5)
+            return
+        end
         
         local targetPlayer = findPlayer(targetName, player)
-        if not targetPlayer then notify(player, "Crumbs Admin", "Player not found.", 5) return end
-        if targetPlayer == player then notify(player, "Crumbs Admin", "You cannot rank yourself.", 5) return end
+        if not targetPlayer then
+            notify(player, "Crumbs Admin", "Player not found.", 5)
+            return
+        end
+        
+        if targetPlayer == player then
+            notify(player, "Crumbs Admin", "You cannot rank yourself.", 5)
+            return
+        end
         
         local rankValue = tonumber(rankInput)
         if not rankValue then
             local r = string.lower(rankInput)
-            rankValue = (r == "customer" and 0) or (r == "cashier" and 1) or (r == "baker" and 2) or (r == "manager" and 3)
+            if r == "customer" then rankValue = 0
+            elseif r == "cashier" then rankValue = 1
+            elseif r == "baker" then rankValue = 2
+            elseif r == "manager" then rankValue = 3
+            end
         end
         
         if not rankValue or rankValue < 0 or rankValue > 3 then
@@ -1106,7 +845,7 @@ local function processCommand(player, commandText)
             return
         end
         
-        local rankName = (rankValue == 0 and "Customer") or (rankValue == 1 and "Cashier") or (rankValue == 2 and "Baker") or "Manager"
+        local rankName = rankValue == 0 and "Customer" or rankValue == 1 and "Cashier" or rankValue == 2 and "Baker" or "Manager"
         PLAYER_RANKS[targetPlayer.UserId] = rankValue
         notify(player, "Crumbs Admin", string.format("%s has been ranked as %s", targetPlayer.Name, rankName), 5)
         notify(targetPlayer, "Crumbs Admin", string.format("You have been ranked as %s", rankName), 5)
@@ -1122,13 +861,24 @@ local function processCommand(player, commandText)
     if realCommandName == "kick" then
         local targetName = commandSplit[1]
         table.remove(commandSplit, 1)
-        local reason = table.concat(commandSplit, " ") ~= "" and table.concat(commandSplit, " ") or "No reason provided"
+        local reason = table.concat(commandSplit, " ")
+        if reason == "" then reason = "No reason provided" end
         
-        if not targetName then notify(player, "Crumbs Admin", "Usage: ,kick <player> [reason]", 5) return end
+        if not targetName then
+            notify(player, "Crumbs Admin", "Usage: ,kick <player> [reason]", 5)
+            return
+        end
         
         local targetPlayer = findPlayer(targetName, player)
-        if not targetPlayer then notify(player, "Crumbs Admin", "Player not found.", 5) return end
-        if targetPlayer.UserId == AUTHOR_USER_ID then notify(player, "Crumbs Admin", "You cannot kick the author.", 5) return end
+        if not targetPlayer then
+            notify(player, "Crumbs Admin", "Player not found.", 5)
+            return
+        end
+        
+        if targetPlayer.UserId == AUTHOR_USER_ID then
+            notify(player, "Crumbs Admin", "You cannot kick the author.", 5)
+            return
+        end
         
         task.wait(0.1)
         targetPlayer:Kick(string.format("Kicked by %s\nReason: %s", player.Name, reason))
@@ -1138,13 +888,24 @@ local function processCommand(player, commandText)
     if realCommandName == "ban" then
         local targetName = commandSplit[1]
         table.remove(commandSplit, 1)
-        local reason = table.concat(commandSplit, " ") ~= "" and table.concat(commandSplit, " ") or "No reason provided"
+        local reason = table.concat(commandSplit, " ")
+        if reason == "" then reason = "No reason provided" end
         
-        if not targetName then notify(player, "Crumbs Admin", "Usage: ,ban <player> [reason]", 5) return end
+        if not targetName then
+            notify(player, "Crumbs Admin", "Usage: ,ban <player> [reason]", 5)
+            return
+        end
         
         local targetPlayer = findPlayer(targetName, player)
-        if not targetPlayer then notify(player, "Crumbs Admin", "Player not found.", 5) return end
-        if targetPlayer.UserId == AUTHOR_USER_ID then notify(player, "Crumbs Admin", "You cannot ban the author.", 5) return end
+        if not targetPlayer then
+            notify(player, "Crumbs Admin", "Player not found.", 5)
+            return
+        end
+        
+        if targetPlayer.UserId == AUTHOR_USER_ID then
+            notify(player, "Crumbs Admin", "You cannot ban the author.", 5)
+            return
+        end
         
         BANNED_PLAYERS[targetPlayer.UserId] = { Banner = player.Name, Reason = reason, Time = os.time() }
         task.wait(0.1)
@@ -1153,15 +914,12 @@ local function processCommand(player, commandText)
     end
     
     if realCommandName == "unban" then
-        if next(BANNED_PLAYERS) then
-            for id, _ in pairs(BANNED_PLAYERS) do
-                BANNED_PLAYERS[id] = nil
-                break
-            end
+        for id, _ in pairs(BANNED_PLAYERS) do
+            BANNED_PLAYERS[id] = nil
             notify(player, "Crumbs Admin", "User has been unbanned.", 5)
-        else
-            notify(player, "Crumbs Admin", "No banned users found.", 5)
+            return
         end
+        notify(player, "Crumbs Admin", "No banned users found.", 5)
         return
     end
     
@@ -1179,18 +937,22 @@ local function processCommand(player, commandText)
             local cleanupCode = [[
 local player = game.Players.LocalPlayer
 local pg = player.PlayerGui
+
 if pg:FindFirstChild("CmdBarGui") then pg.CmdBarGui:Destroy() end
 if pg:FindFirstChild("LanzyDashboard") then pg.LanzyDashboard:Destroy() end
+
 for _, v in ipairs(pg:GetChildren()) do
     if v.Name:find("LNZNotification_") then v:Destroy() end
-    if v:IsA("RemoteEvent") and v.Name:find("NotificationEvent_") then v:Destroy() end
 end
+
+_G.LanzyNotifStack = nil
+_G.LNZNotifCooldown = nil
 ]]
-            runLua(p, cleanupCode, 1)
+            task.spawn(function() runLua(p, cleanupCode) end)
         end
         
         for _, v in ipairs(ReplicatedStorage:GetChildren()) do
-            if v.Name:find("CmdEvent_") or v.Name == "CrumbsAdminRemote" then
+            if v.Name == "CrumbsAdminRemote" then
                 v:Destroy()
             end
         end
@@ -1199,7 +961,12 @@ end
         LOOP_PUNISH = {}
         BANNED_PLAYERS = {}
         
-        remote:Destroy()
+        for id, _ in pairs(PLAYER_RANKS) do
+            if id ~= AUTHOR_USER_ID then
+                PLAYER_RANKS[id] = nil
+            end
+        end
+        
         script:Destroy()
         return
     end
@@ -1214,7 +981,10 @@ end
         return
     end
     
-    if #commandSplit == 0 then notify(player, "Crumbs Admin", "Invalid command usage.", 5) return end
+    if #commandSplit == 0 then
+        notify(player, "Crumbs Admin", "Invalid command usage.", 5)
+        return
+    end
     
     local targets = getTargets(player, commandSplit[1])
     table.remove(commandSplit, 1)
@@ -1222,8 +992,6 @@ end
     
     for _, target in ipairs(targets) do
         task.spawn(function()
-            if not target then return end
-            
             if realCommandName == "punish" and target.Character then
                 target.Character:BreakJoints()
             elseif realCommandName == "kill" and target.Character and target.Character:FindFirstChild("Head") then
@@ -1315,9 +1083,9 @@ local function onPlayerAdded(player)
         return
     end
     
-    createCmdBar(player)
-    notify(player, "Crumbs Admin", "Click , for command bar | Type ,cmds to get started.", 5)
-    notify(player, "Crumbs Admin", "Welcome to Crumbs Admin, "..player.DisplayName..".", 5)
+    task.spawn(function() setupCmdBar(player) end)
+    task.spawn(function() notify(player, "Crumbs Admin", "Click , for command bar | Type ,cmds to get started.", 5) end)
+    task.spawn(function() notify(player, "Crumbs Admin", "Welcome to Crumbs Admin, "..player.DisplayName..".", 5) end)
     
     player.Chatted:Connect(function(msg)
         if string.sub(msg, 1, 1) == PREFIX then
@@ -1326,15 +1094,24 @@ local function onPlayerAdded(player)
     end)
 end
 
-for _, player in ipairs(Players:GetPlayers()) do onPlayerAdded(player) end
-Players.PlayerAdded:Connect(onPlayerAdded)
-Players.PlayerRemoving:Connect(function(p) LOOP_KILL[p.UserId] = nil; LOOP_PUNISH[p.UserId] = nil end)
+for _, player in ipairs(Players:GetPlayers()) do
+    task.spawn(function() onPlayerAdded(player) end)
+end
 
-remote.OnServerEvent:Connect(function(player, action, ...)
-    if action == "Command" then
-        local cmd = ...
-        if cmd then processCommand(player, cmd) end
+Players.PlayerAdded:Connect(onPlayerAdded)
+Players.PlayerRemoving:Connect(function(p)
+    LOOP_KILL[p.UserId] = nil
+    LOOP_PUNISH[p.UserId] = nil
+end)
+
+local remote = Instance.new("RemoteEvent")
+remote.Name = "CrumbsAdminRemote"
+remote.Parent = ReplicatedStorage
+
+remote.OnServerEvent:Connect(function(player, command)
+    if command then
+        task.spawn(function() processCommand(player, command) end)
     end
 end)
 
-broadcastNotification("Crumbs Admin", "Tadaa~! Crumbs Admin loaded successfully!! :3", 5)
+task.spawn(function() broadcastNotification("Crumbs Admin", "Tada~!! Crumbs Admin loaded!! :3, 5) end)
