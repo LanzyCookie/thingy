@@ -3,10 +3,11 @@
 
 local Players = game:GetService("Players")
 local ServerScriptService = game:GetService("ServerScriptService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TeleportService = game:GetService("TeleportService")
-local RunService = game:GetService("RunService")
 local TextChatService = game:GetService("TextChatService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
 
 -- Whitelist Configuration
 local AUTO_RANKED_USERS = {
@@ -42,7 +43,7 @@ local RANKS = {
     }
 }
 
--- Colors (for GUI)
+-- Colors
 local COLORS = {
     CHOCOLATE = Color3.fromRGB(74, 49, 28),
     MILK_CHOCOLATE = Color3.fromRGB(111, 78, 55),
@@ -52,17 +53,16 @@ local COLORS = {
     OFF_WHITE = Color3.fromRGB(240, 240, 240)
 }
 
--- Module Storage
-local AdminModule = {}
-
 -- Data Stores
 local PlayerRanks = {}
 local PlayerData = {}
 local PunishStatus = {}
 local LoopKillStatus = {}
 local BanStatus = {}
+local commandAliases = {}
+local commands = {}
 
--- Services
+-- DataStore
 local DataStoreService = game:GetService("DataStoreService")
 local rankStore = DataStoreService:GetDataStore("CrumbsAdminRanks")
 
@@ -89,7 +89,10 @@ local function loadPlayerRank(player)
     PlayerData[player] = {
         isBanned = false,
         banConnections = {},
-        guiInstances = {}
+        guiInstances = {},
+        cmdBarVisible = false,
+        currentDashboard = nil,
+        notificationStack = {}
     }
 end
 
@@ -138,6 +141,14 @@ local function findPlayer(input, executor)
         return players[math.random(1, #players)]
     end
     
+    if input:lower() == "all" then
+        return "all"
+    end
+    
+    if input:lower() == "others" then
+        return "others"
+    end
+    
     local inputLower = string.lower(input)
     
     for _, player in ipairs(Players:GetPlayers()) do
@@ -156,26 +167,39 @@ local function findPlayer(input, executor)
     return nil
 end
 
--- GUI Creation Functions (Server pushes to client)
+-- GUI Creation Functions
 local function createNotificationGui(player, title, message, duration)
     local playerGui = player:FindFirstChild("PlayerGui")
     if not playerGui then return end
+    
+    -- Calculate stack position
+    local yOffset = 10
+    for _, entry in ipairs(PlayerData[player].notificationStack) do
+        yOffset = yOffset + 80 + 6
+    end
     
     -- Create ScreenGui
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "CrumbsNotif_" .. tick()
     screenGui.ResetOnSpawn = false
+    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     screenGui.Parent = playerGui
     
     -- Main frame
     local frame = Instance.new("Frame")
     frame.Name = "NotificationFrame"
     frame.Size = UDim2.new(0, 280, 0, 80)
-    frame.Position = UDim2.new(1, -290, 1, -90)
+    frame.Position = UDim2.new(1, -290, 1, -(yOffset + 80))
     frame.BackgroundColor3 = COLORS.CHOCOLATE
     frame.BackgroundTransparency = 0.05
     frame.BorderSizePixel = 0
     frame.Parent = screenGui
+    
+    -- Add stroke for visibility
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = COLORS.LIGHT_CHOCOLATE
+    stroke.Thickness = 2
+    stroke.Parent = frame
     
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 15)
@@ -191,6 +215,7 @@ local function createNotificationGui(player, title, message, duration)
     titleLabel.Font = Enum.Font.GothamBold
     titleLabel.TextSize = 13
     titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    titleLabel.TextYAlignment = Enum.TextYAlignment.Top
     titleLabel.Parent = frame
     
     -- Line
@@ -227,21 +252,70 @@ local function createNotificationGui(player, title, message, duration)
     closeBtn.TextSize = 15
     closeBtn.Parent = frame
     
-    -- Store in player data
-    table.insert(PlayerData[player].guiInstances, screenGui)
+    -- Add to stack
+    local stackEntry = {
+        gui = screenGui,
+        frame = frame,
+        height = 80,
+        yOffset = yOffset
+    }
+    table.insert(PlayerData[player].notificationStack, stackEntry)
     
-    -- Close function
-    local function close()
-        screenGui:Destroy()
-        for i, gui in ipairs(PlayerData[player].guiInstances) do
-            if gui == screenGui then
-                table.remove(PlayerData[player].guiInstances, i)
-                break
+    -- Restack function
+    local function restack()
+        local runningOffset = 10
+        for _, entry in ipairs(PlayerData[player].notificationStack) do
+            if entry.gui and entry.gui.Parent then
+                local targetY = -(runningOffset + entry.height)
+                TweenService:Create(entry.frame, TweenInfo.new(0.25, Enum.EasingStyle.Quint), {
+                    Position = UDim2.new(1, -290, 1, targetY)
+                }):Play()
+                runningOffset = runningOffset + entry.height + 6
             end
         end
     end
     
+    -- Close function
+    local function close()
+        -- Remove from stack
+        for i, entry in ipairs(PlayerData[player].notificationStack) do
+            if entry.gui == screenGui then
+                table.remove(PlayerData[player].notificationStack, i)
+                break
+            end
+        end
+        
+        -- Fade out animations
+        TweenService:Create(frame, TweenInfo.new(0.4), {BackgroundTransparency = 1}):Play()
+        TweenService:Create(titleLabel, TweenInfo.new(0.4), {TextTransparency = 1}):Play()
+        TweenService:Create(messageLabel, TweenInfo.new(0.4), {TextTransparency = 1}):Play()
+        TweenService:Create(line, TweenInfo.new(0.4), {BackgroundTransparency = 1}):Play()
+        TweenService:Create(closeBtn, TweenInfo.new(0.4), {TextTransparency = 1}):Play()
+        
+        restack()
+        
+        task.wait(0.4)
+        if screenGui and screenGui.Parent then
+            screenGui:Destroy()
+        end
+    end
+    
     closeBtn.MouseButton1Click:Connect(close)
+    
+    -- Hover effect
+    closeBtn.MouseEnter:Connect(function()
+        TweenService:Create(closeBtn, TweenInfo.new(0.2), {
+            TextColor3 = COLORS.LIGHT_CHOCOLATE,
+            TextSize = 17
+        }):Play()
+    end)
+    
+    closeBtn.MouseLeave:Connect(function()
+        TweenService:Create(closeBtn, TweenInfo.new(0.2), {
+            TextColor3 = COLORS.COOKIE_DOUGH,
+            TextSize = 15
+        }):Play()
+    end)
     
     -- Auto close after duration
     task.wait(duration or 4)
@@ -252,9 +326,27 @@ local function createDashboardGui(player, defaultTab)
     local playerGui = player:FindFirstChild("PlayerGui")
     if not playerGui then return end
     
-    -- Clean up old dashboard
+    -- If dashboard exists, close it with animation
     if PlayerData[player].currentDashboard then
-        PlayerData[player].currentDashboard:Destroy()
+        local oldDashboard = PlayerData[player].currentDashboard
+        local mainFrame = oldDashboard:FindFirstChild("MainFrame")
+        
+        if mainFrame then
+            -- Fade out animations
+            TweenService:Create(mainFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
+            
+            for _, v in ipairs(mainFrame:GetDescendants()) do
+                if v:IsA("TextLabel") or v:IsA("TextButton") then
+                    TweenService:Create(v, TweenInfo.new(0.3), {TextTransparency = 1}):Play()
+                elseif v:IsA("Frame") or v:IsA("ScrollingFrame") then
+                    TweenService:Create(v, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
+                end
+            end
+            
+            task.wait(0.15)
+        end
+        
+        oldDashboard:Destroy()
         PlayerData[player].currentDashboard = nil
     end
     
@@ -262,6 +354,7 @@ local function createDashboardGui(player, defaultTab)
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "CrumbsDashboard"
     screenGui.ResetOnSpawn = false
+    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     screenGui.Parent = playerGui
     PlayerData[player].currentDashboard = screenGui
     table.insert(PlayerData[player].guiInstances, screenGui)
@@ -272,7 +365,7 @@ local function createDashboardGui(player, defaultTab)
     mainFrame.Size = UDim2.new(0, 750, 0, 420)
     mainFrame.Position = UDim2.new(0.5, -375, 0.5, -210)
     mainFrame.BackgroundColor3 = COLORS.CHOCOLATE
-    mainFrame.BackgroundTransparency = 0.05
+    mainFrame.BackgroundTransparency = 1
     mainFrame.BorderSizePixel = 2
     mainFrame.BorderColor3 = COLORS.LIGHT_CHOCOLATE
     mainFrame.Parent = screenGui
@@ -283,9 +376,10 @@ local function createDashboardGui(player, defaultTab)
     
     -- Top bar
     local topBar = Instance.new("Frame")
+    topBar.Name = "TopBar"
     topBar.Size = UDim2.new(1, 0, 0, 38)
     topBar.BackgroundColor3 = COLORS.MILK_CHOCOLATE
-    topBar.BackgroundTransparency = 0.1
+    topBar.BackgroundTransparency = 1
     topBar.BorderSizePixel = 0
     topBar.Parent = mainFrame
     
@@ -294,31 +388,36 @@ local function createDashboardGui(player, defaultTab)
     topBarCorner.Parent = topBar
     
     local title = Instance.new("TextLabel")
+    title.Name = "Title"
     title.Size = UDim2.new(0, 200, 0, 38)
     title.Position = UDim2.new(0.36, 0, 0, 0)
     title.BackgroundTransparency = 1
     title.Text = "Crumbs Admin"
     title.TextColor3 = COLORS.OFF_WHITE
+    title.TextTransparency = 1
     title.TextSize = 22
     title.Font = Enum.Font.GothamBold
     title.Parent = topBar
     
     local closeBtn = Instance.new("TextButton")
+    closeBtn.Name = "CloseButton"
     closeBtn.Size = UDim2.new(0, 32, 0, 32)
     closeBtn.Position = UDim2.new(1, -37, 0, 3)
     closeBtn.BackgroundTransparency = 1
     closeBtn.Text = "X"
     closeBtn.TextColor3 = COLORS.OFF_WHITE
+    closeBtn.TextTransparency = 1
     closeBtn.TextSize = 18
     closeBtn.Font = Enum.Font.GothamBold
     closeBtn.Parent = topBar
     
     -- Tab bar
     local tabBar = Instance.new("Frame")
+    tabBar.Name = "TabBar"
     tabBar.Size = UDim2.new(1, -16, 0, 42)
     tabBar.Position = UDim2.new(0, 8, 0, 46)
     tabBar.BackgroundColor3 = COLORS.MILK_CHOCOLATE
-    tabBar.BackgroundTransparency = 0.2
+    tabBar.BackgroundTransparency = 1
     tabBar.BorderSizePixel = 1
     tabBar.BorderColor3 = COLORS.LIGHT_CHOCOLATE
     tabBar.Parent = mainFrame
@@ -328,37 +427,42 @@ local function createDashboardGui(player, defaultTab)
     tabBarCorner.Parent = tabBar
     
     local commandsTab = Instance.new("TextButton")
+    commandsTab.Name = "CommandsTab"
     commandsTab.Size = UDim2.new(0.5, -5, 0, 36)
     commandsTab.Position = UDim2.new(0, 4, 0, 3)
     commandsTab.BackgroundColor3 = COLORS.COOKIE_DOUGH
-    commandsTab.BackgroundTransparency = 0.1
+    commandsTab.BackgroundTransparency = 1
     commandsTab.BorderSizePixel = 1
     commandsTab.BorderColor3 = COLORS.LIGHT_CHOCOLATE
     commandsTab.Text = "Commands"
     commandsTab.TextColor3 = COLORS.CHOCOLATE
+    commandsTab.TextTransparency = 1
     commandsTab.TextSize = 16
     commandsTab.Font = Enum.Font.GothamBold
     commandsTab.Parent = tabBar
     
     local creditsTab = Instance.new("TextButton")
+    creditsTab.Name = "CreditsTab"
     creditsTab.Size = UDim2.new(0.5, -5, 0, 36)
     creditsTab.Position = UDim2.new(0.5, 1, 0, 3)
     creditsTab.BackgroundColor3 = COLORS.MILK_CHOCOLATE
-    creditsTab.BackgroundTransparency = 0.3
+    creditsTab.BackgroundTransparency = 1
     creditsTab.BorderSizePixel = 1
     creditsTab.BorderColor3 = COLORS.LIGHT_CHOCOLATE
     creditsTab.Text = "Info"
     creditsTab.TextColor3 = COLORS.OFF_WHITE
+    creditsTab.TextTransparency = 1
     creditsTab.TextSize = 16
     creditsTab.Font = Enum.Font.GothamBold
     creditsTab.Parent = tabBar
     
     -- Content frame
     local contentFrame = Instance.new("Frame")
+    contentFrame.Name = "ContentFrame"
     contentFrame.Size = UDim2.new(1, -16, 1, -104)
     contentFrame.Position = UDim2.new(0, 8, 0, 96)
     contentFrame.BackgroundColor3 = COLORS.MILK_CHOCOLATE
-    contentFrame.BackgroundTransparency = 0.3
+    contentFrame.BackgroundTransparency = 1
     contentFrame.BorderSizePixel = 1
     contentFrame.BorderColor3 = COLORS.LIGHT_CHOCOLATE
     contentFrame.Parent = mainFrame
@@ -369,41 +473,51 @@ local function createDashboardGui(player, defaultTab)
     
     -- Commands content
     local commandsContent = Instance.new("ScrollingFrame")
+    commandsContent.Name = "CommandsContent"
     commandsContent.Size = UDim2.new(1, 0, 1, 0)
     commandsContent.BackgroundColor3 = COLORS.MILK_CHOCOLATE
-    commandsContent.BackgroundTransparency = 0
+    commandsContent.BackgroundTransparency = 1
     commandsContent.BorderSizePixel = 0
     commandsContent.ScrollBarThickness = 6
     commandsContent.ScrollBarImageColor3 = COLORS.COOKIE_DOUGH
     commandsContent.Visible = (defaultTab == "Commands")
     commandsContent.Parent = contentFrame
+    commandsContent.CanvasSize = UDim2.new(0, 0, 0, 0)
     
     local commandsLayout = Instance.new("UIListLayout")
     commandsLayout.Parent = commandsContent
     commandsLayout.SortOrder = Enum.SortOrder.LayoutOrder
     commandsLayout.Padding = UDim.new(0, 5)
     
+    commandsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        commandsContent.CanvasSize = UDim2.new(0, 0, 0, commandsLayout.AbsoluteContentSize.Y + 10)
+    end)
+    
     -- Rank info
     local rankInfo = Instance.new("TextLabel")
+    rankInfo.Name = "RankInfo"
     rankInfo.Size = UDim2.new(1, -20, 0, 40)
     rankInfo.Position = UDim2.new(0, 10, 0, 10)
     rankInfo.BackgroundTransparency = 1
     rankInfo.Text = "Your Rank: " .. (PlayerRanks[player] or "Customer")
     rankInfo.TextColor3 = COLORS.COOKIE_DOUGH
+    rankInfo.TextTransparency = 1
     rankInfo.TextSize = 24
     rankInfo.Font = Enum.Font.GothamBold
     rankInfo.Parent = commandsContent
     
     -- Credits content
     local creditsContent = Instance.new("ScrollingFrame")
+    creditsContent.Name = "CreditsContent"
     creditsContent.Size = UDim2.new(1, 0, 1, 0)
     creditsContent.BackgroundColor3 = COLORS.MILK_CHOCOLATE
-    creditsContent.BackgroundTransparency = 0
+    creditsContent.BackgroundTransparency = 1
     creditsContent.BorderSizePixel = 0
     creditsContent.ScrollBarThickness = 6
     creditsContent.ScrollBarImageColor3 = COLORS.COOKIE_DOUGH
     creditsContent.Visible = (defaultTab ~= "Commands")
     creditsContent.Parent = contentFrame
+    creditsContent.CanvasSize = UDim2.new(0, 0, 0, 200)
     
     local creditsLayout = Instance.new("UIListLayout")
     creditsLayout.Parent = creditsContent
@@ -413,9 +527,11 @@ local function createDashboardGui(player, defaultTab)
     
     local creditTitle = Instance.new("TextLabel")
     creditTitle.Size = UDim2.new(1, -20, 0, 40)
+    creditTitle.Position = UDim2.new(0, 10, 0, 10)
     creditTitle.BackgroundTransparency = 1
     creditTitle.Text = "Crumbs Admin"
     creditTitle.TextColor3 = COLORS.COOKIE_DOUGH
+    creditTitle.TextTransparency = 1
     creditTitle.TextSize = 28
     creditTitle.Font = Enum.Font.GothamBold
     creditTitle.Parent = creditsContent
@@ -425,6 +541,7 @@ local function createDashboardGui(player, defaultTab)
     versionLabel.BackgroundTransparency = 1
     versionLabel.Text = "Version 2.0 - Server-Side"
     versionLabel.TextColor3 = COLORS.OFF_WHITE
+    versionLabel.TextTransparency = 1
     versionLabel.TextSize = 16
     versionLabel.Font = Enum.Font.Gotham
     versionLabel.Parent = creditsContent
@@ -432,17 +549,33 @@ local function createDashboardGui(player, defaultTab)
     -- Tab switching
     local function switchTab(tab)
         if tab == "Commands" then
-            commandsTab.BackgroundColor3 = COLORS.COOKIE_DOUGH
-            commandsTab.TextColor3 = COLORS.CHOCOLATE
-            creditsTab.BackgroundColor3 = COLORS.MILK_CHOCOLATE
-            creditsTab.TextColor3 = COLORS.OFF_WHITE
+            TweenService:Create(commandsTab, TweenInfo.new(0.3), {
+                BackgroundColor3 = COLORS.COOKIE_DOUGH,
+                BackgroundTransparency = 0.1,
+                TextColor3 = COLORS.CHOCOLATE
+            }):Play()
+            
+            TweenService:Create(creditsTab, TweenInfo.new(0.3), {
+                BackgroundColor3 = COLORS.MILK_CHOCOLATE,
+                BackgroundTransparency = 0.3,
+                TextColor3 = COLORS.OFF_WHITE
+            }):Play()
+            
             commandsContent.Visible = true
             creditsContent.Visible = false
         else
-            commandsTab.BackgroundColor3 = COLORS.MILK_CHOCOLATE
-            commandsTab.TextColor3 = COLORS.OFF_WHITE
-            creditsTab.BackgroundColor3 = COLORS.COOKIE_DOUGH
-            creditsTab.TextColor3 = COLORS.CHOCOLATE
+            TweenService:Create(creditsTab, TweenInfo.new(0.3), {
+                BackgroundColor3 = COLORS.COOKIE_DOUGH,
+                BackgroundTransparency = 0.1,
+                TextColor3 = COLORS.CHOCOLATE
+            }):Play()
+            
+            TweenService:Create(commandsTab, TweenInfo.new(0.3), {
+                BackgroundColor3 = COLORS.MILK_CHOCOLATE,
+                BackgroundTransparency = 0.3,
+                TextColor3 = COLORS.OFF_WHITE
+            }):Play()
+            
             commandsContent.Visible = false
             creditsContent.Visible = true
         end
@@ -450,11 +583,57 @@ local function createDashboardGui(player, defaultTab)
     
     commandsTab.MouseButton1Click:Connect(function() switchTab("Commands") end)
     creditsTab.MouseButton1Click:Connect(function() switchTab("Credits") end)
-    closeBtn.MouseButton1Click:Connect(function() screenGui:Destroy() PlayerData[player].currentDashboard = nil end)
+    
+    -- Close button with animation
+    closeBtn.MouseButton1Click:Connect(function()
+        -- Fade out animations
+        TweenService:Create(mainFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
+        TweenService:Create(topBar, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
+        TweenService:Create(title, TweenInfo.new(0.3), {TextTransparency = 1}):Play()
+        TweenService:Create(closeBtn, TweenInfo.new(0.3), {TextTransparency = 1}):Play()
+        TweenService:Create(tabBar, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
+        TweenService:Create(commandsTab, TweenInfo.new(0.3), {BackgroundTransparency = 1, TextTransparency = 1}):Play()
+        TweenService:Create(creditsTab, TweenInfo.new(0.3), {BackgroundTransparency = 1, TextTransparency = 1}):Play()
+        TweenService:Create(contentFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
+        
+        for _, v in ipairs(contentFrame:GetDescendants()) do
+            if v:IsA("TextLabel") or v:IsA("TextButton") then
+                TweenService:Create(v, TweenInfo.new(0.3), {TextTransparency = 1}):Play()
+            elseif v:IsA("Frame") or v:IsA("ScrollingFrame") then
+                TweenService:Create(v, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
+            end
+        end
+        
+        task.wait(0.15)
+        screenGui:Destroy()
+        PlayerData[player].currentDashboard = nil
+    end)
     
     -- Dragging
     local dragging = false
     local dragStart, startPos
+    local dragTween = nil
+    
+    local function updateDrag(input)
+        if dragging and dragStart and startPos then
+            local delta = input.Position - dragStart
+            local newPos = UDim2.new(
+                startPos.X.Scale, 
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
+            )
+            
+            if dragTween then
+                dragTween:Cancel()
+            end
+            
+            dragTween = TweenService:Create(mainFrame, TweenInfo.new(0.08, Enum.EasingStyle.Quad), {
+                Position = newPos
+            })
+            dragTween:Play()
+        end
+    end
     
     topBar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -464,23 +643,52 @@ local function createDashboardGui(player, defaultTab)
         end
     end)
     
-    game:GetService("UserInputService").InputChanged:Connect(function(input)
+    local uis = game:GetService("UserInputService")
+    
+    local conn1 = uis.InputChanged:Connect(function(input)
         if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local delta = input.Position - dragStart
-            mainFrame.Position = UDim2.new(
-                startPos.X.Scale,
-                startPos.X.Offset + delta.X,
-                startPos.Y.Scale,
-                startPos.Y.Offset + delta.Y
-            )
+            updateDrag(input)
         end
     end)
     
-    game:GetService("UserInputService").InputEnded:Connect(function(input)
+    local conn2 = uis.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = false
+            if dragTween then
+                dragTween:Cancel()
+                dragTween = nil
+            end
         end
     end)
+    
+    screenGui.Destroying:Connect(function()
+        conn1:Disconnect()
+        conn2:Disconnect()
+    end)
+    
+    -- Fade in animations
+    task.wait(0.1)
+    
+    TweenService:Create(mainFrame, TweenInfo.new(0.5), {BackgroundTransparency = 0.05}):Play()
+    TweenService:Create(topBar, TweenInfo.new(0.5), {BackgroundTransparency = 0.1}):Play()
+    TweenService:Create(title, TweenInfo.new(0.5), {TextTransparency = 0}):Play()
+    TweenService:Create(closeBtn, TweenInfo.new(0.5), {TextTransparency = 0}):Play()
+    TweenService:Create(tabBar, TweenInfo.new(0.5), {BackgroundTransparency = 0.2}):Play()
+    TweenService:Create(contentFrame, TweenInfo.new(0.5), {BackgroundTransparency = 0.3}):Play()
+    
+    if defaultTab == "Commands" then
+        TweenService:Create(commandsTab, TweenInfo.new(0.5), {BackgroundTransparency = 0.1, TextTransparency = 0}):Play()
+        TweenService:Create(creditsTab, TweenInfo.new(0.5), {BackgroundTransparency = 0.3, TextTransparency = 0}):Play()
+    else
+        TweenService:Create(commandsTab, TweenInfo.new(0.5), {BackgroundTransparency = 0.3, TextTransparency = 0}):Play()
+        TweenService:Create(creditsTab, TweenInfo.new(0.5), {BackgroundTransparency = 0.1, TextTransparency = 0}):Play()
+    end
+    
+    task.wait(0.1)
+    
+    TweenService:Create(rankInfo, TweenInfo.new(0.4), {TextTransparency = 0}):Play()
+    TweenService:Create(creditTitle, TweenInfo.new(0.4), {TextTransparency = 0}):Play()
+    TweenService:Create(versionLabel, TweenInfo.new(0.4), {TextTransparency = 0}):Play()
 end
 
 local function createCmdBarGui(player)
@@ -490,9 +698,11 @@ local function createCmdBarGui(player)
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "CrumbsCmdBar"
     screenGui.ResetOnSpawn = false
+    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     screenGui.Parent = playerGui
     table.insert(PlayerData[player].guiInstances, screenGui)
     
+    -- Command Bar Frame
     local cmdBarFrame = Instance.new("Frame")
     cmdBarFrame.Name = "CmdBarFrame"
     cmdBarFrame.Size = UDim2.new(0.5, 0, 0.08, 0)
@@ -502,6 +712,7 @@ local function createCmdBarGui(player)
     cmdBarFrame.Parent = screenGui
     
     local cmdBarTextBox = Instance.new("TextBox")
+    cmdBarTextBox.Name = "CmdBarTextBox"
     cmdBarTextBox.Size = UDim2.new(1, -4, 1, -4)
     cmdBarTextBox.Position = UDim2.new(0, 2, 0, 2)
     cmdBarTextBox.BackgroundColor3 = COLORS.MILK_CHOCOLATE
@@ -518,12 +729,18 @@ local function createCmdBarGui(player)
     textBoxCorner.CornerRadius = UDim.new(0, 10)
     textBoxCorner.Parent = cmdBarTextBox
     
+    local textBoxStroke = Instance.new("UIStroke")
+    textBoxStroke.Color = COLORS.LIGHT_CHOCOLATE
+    textBoxStroke.Thickness = 2
+    textBoxStroke.Parent = cmdBarTextBox
+    
     -- Rank indicator
     local rankIndicator = Instance.new("TextLabel")
+    rankIndicator.Name = "RankIndicator"
     rankIndicator.Size = UDim2.new(0, 150, 0, 30)
     rankIndicator.Position = UDim2.new(1, -160, 0, 10)
     rankIndicator.BackgroundColor3 = COLORS.CHOCOLATE
-    rankIndicator.BackgroundTransparency = 0.2
+    rankIndicator.BackgroundTransparency = 0
     rankIndicator.TextColor3 = COLORS.COOKIE_DOUGH
     rankIndicator.Text = "Rank: " .. (PlayerRanks[player] or "Customer")
     rankIndicator.TextSize = 14
@@ -534,72 +751,66 @@ local function createCmdBarGui(player)
     rankCorner.CornerRadius = UDim.new(0, 8)
     rankCorner.Parent = rankIndicator
     
-    -- Store in player data for toggling
+    local rankStroke = Instance.new("UIStroke")
+    rankStroke.Color = COLORS.LIGHT_CHOCOLATE
+    rankStroke.Thickness = 2
+    rankStroke.Parent = rankIndicator
+    
+    -- Store references
     PlayerData[player].cmdBar = {
         frame = cmdBarFrame,
         textBox = cmdBarTextBox,
-        rankIndicator = rankIndicator
+        rankIndicator = rankIndicator,
+        visible = false
     }
     
     -- Command handling
-    cmdBarTextBox.FocusLost:Connect(function(enterPressed)
+    cmdBarTextBox.FocusLost:Connect(function(enterPressed, inputObject)
         if enterPressed then
             local commandText = cmdBarTextBox.Text
             cmdBarTextBox.Text = ""
             toggleCmdBar(player, false)
             
-            if commandText ~= "" then
+            if commandText ~= "" and commandText ~= "" then
                 handleCommand(player, commandText)
             end
         else
             toggleCmdBar(player, false)
         end
     end)
-    
-    -- Input handling for comma key
-    game:GetService("UserInputService").InputBegan:Connect(function(input, gameProcessed)
-        if player == Players.LocalPlayer and not gameProcessed and input.KeyCode == Enum.KeyCode.Comma then
-            toggleCmdBar(player)
-        end
-    end)
 end
 
 local function toggleCmdBar(player, show)
-    local cmdBar = PlayerData[player].cmdBar
-    if not cmdBar then return end
+    if not PlayerData[player] or not PlayerData[player].cmdBar then return end
     
+    local cmdBar = PlayerData[player].cmdBar
     local frame = cmdBar.frame
     local textBox = cmdBar.textBox
     
     if show == nil then
-        show = not frame.Visible
+        show = not cmdBar.visible
     end
     
     if show then
+        cmdBar.visible = true
         frame.Visible = true
         frame.Position = UDim2.new(0.25, 0, 1.2, 0)
         
-        -- Focus the text box (requires client focus, but we'll let the client handle this)
-        -- In practice, the client would need to handle this, but for server-pushed GUI,
-        -- we're relying on the fact that the text box exists on the client
+        TweenService:Create(frame, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {
+            Position = UDim2.new(0.25, 0, 0.85, 0)
+        }):Play()
         
-        -- Animate in
-        local tween = game:GetService("TweenService"):Create(frame, 
-            TweenInfo.new(0.5, Enum.EasingStyle.Quad), 
-            {Position = UDim2.new(0.25, 0, 0.85, 0)}
-        )
-        tween:Play()
+        task.wait(0.1)
+        textBox:CaptureFocus()
     else
-        -- Animate out
-        local tween = game:GetService("TweenService"):Create(frame, 
-            TweenInfo.new(0.3, Enum.EasingStyle.Quad), 
-            {Position = UDim2.new(0.25, 0, 1.2, 0)}
-        )
-        tween:Play()
+        cmdBar.visible = false
         
-        tween.Completed:Connect(function()
-            frame.Visible = false
-        end)
+        TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {
+            Position = UDim2.new(0.25, 0, 1.2, 0)
+        }):Play()
+        
+        task.wait(0.3)
+        frame.Visible = false
     end
 end
 
@@ -620,9 +831,6 @@ local function openDashboard(player, defaultTab)
 end
 
 -- Command Registration
-local commands = {}
-local commandAliases = {}
-
 local function AddCommand(name, desc, args, minRank, onCalled, aliases)
     local cmdInfo = {
         name = name,
@@ -654,15 +862,16 @@ local function handleCommand(player, commandText)
         return
     end
     
-    local args = {}
+    -- Parse command and arguments
+    local parts = {}
     for word in string.gmatch(commandText, "%S+") do
-        table.insert(args, word)
+        table.insert(parts, word)
     end
     
-    if #args == 0 then return end
+    if #parts == 0 then return end
     
-    local cmdName = string.lower(args[1])
-    table.remove(args, 1)
+    local cmdName = string.lower(parts[1])
+    table.remove(parts, 1)
     
     -- Check aliases
     if commandAliases[cmdName] then
@@ -676,19 +885,18 @@ local function handleCommand(player, commandText)
     end
     
     -- Check permission
-    local playerRankLevel = getRankLevel(player)
-    if playerRankLevel < cmd.minRank then
+    if not hasPermission(player, cmdName) then
         notify(player, "Crumbs Admin", "You don't have permission to use this command.", 3)
         return
     end
     
     -- Execute command
     local success, err = pcall(function()
-        cmd.callback(player, unpack(args))
+        cmd.callback(player, unpack(parts))
     end)
     
     if not success then
-        warn("Command error:", err)
+        warn("Command error from", player.Name, ":", err)
         notify(player, "Crumbs Admin", "Command execution failed.", 3)
     end
 end
@@ -696,6 +904,7 @@ end
 -- Initialize Chat Handler
 local function setupChatHandler()
     if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+        -- Create commands folder if it doesn't exist
         local textChatCommands = TextChatService:FindFirstChild("TextChatCommands")
         if not textChatCommands then
             textChatCommands = Instance.new("Folder")
@@ -703,6 +912,7 @@ local function setupChatHandler()
             textChatCommands.Parent = TextChatService
         end
         
+        -- Create command trigger
         local cmdTrigger = Instance.new("TextChatCommand")
         cmdTrigger.Name = "CrumbsAdminCmd"
         cmdTrigger.TriggerTexts = {","}
@@ -713,15 +923,94 @@ local function setupChatHandler()
                 handleCommand(sender, messageText)
             end
         end)
-    else
-        -- Legacy chat
-        Players.PlayerAdded:Connect(function(player)
-            player.Chatted:Connect(function(message)
-                if string.sub(message, 1, 1) == "," then
-                    handleCommand(player, message)
-                end
-            end)
+    end
+    
+    -- Legacy chat handler
+    Players.PlayerAdded:Connect(function(player)
+        player.Chatted:Connect(function(message)
+            if string.sub(message, 1, 1) == "," then
+                handleCommand(player, message)
+            end
         end)
+    end)
+end
+
+-- Handle multiple targets
+local function handleTargets(executor, targetString, callback)
+    if not targetString then return end
+    
+    -- Check if it's a comma-separated list
+    if string.find(targetString, ",") then
+        local names = {}
+        for name in string.gmatch(targetString, "([^,]+)") do
+            name = name:gsub("^%s+", ""):gsub("%s+$", "")
+            table.insert(names, name)
+        end
+        
+        for _, name in ipairs(names) do
+            if name:lower() == "all" then
+                for _, player in ipairs(Players:GetPlayers()) do
+                    if player ~= executor then
+                        callback(player)
+                    end
+                end
+            elseif name:lower() == "others" then
+                for _, player in ipairs(Players:GetPlayers()) do
+                    if player ~= executor then
+                        callback(player)
+                    end
+                end
+            elseif name:lower() == "me" then
+                callback(executor)
+            elseif name:lower() == "random" then
+                local players = {}
+                for _, player in ipairs(Players:GetPlayers()) do
+                    if player ~= executor then
+                        table.insert(players, player)
+                    end
+                end
+                if #players > 0 then
+                    callback(players[math.random(1, #players)])
+                end
+            else
+                local player = findPlayer(name, executor)
+                if player and player ~= executor then
+                    callback(player)
+                end
+            end
+        end
+    else
+        -- Single target
+        if targetString:lower() == "all" then
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= executor then
+                    callback(player)
+                end
+            end
+        elseif targetString:lower() == "others" then
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= executor then
+                    callback(player)
+                end
+            end
+        elseif targetString:lower() == "me" then
+            callback(executor)
+        elseif targetString:lower() == "random" then
+            local players = {}
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= executor then
+                    table.insert(players, player)
+                end
+            end
+            if #players > 0 then
+                callback(players[math.random(1, #players)])
+            end
+        else
+            local player = findPlayer(targetString, executor)
+            if player then
+                callback(player)
+            end
+        end
     end
 end
 
@@ -735,21 +1024,20 @@ local function banPlayer(executor, target)
     target:Kick("You have been banned by " .. executor.Name)
     
     -- Set up rejoin detection
-    local connection
-    connection = Players.PlayerAdded:Connect(function(player)
+    local connection = Players.PlayerAdded:Connect(function(player)
         if player == target then
             task.wait(0.5)
             if BanStatus[target] then
                 player:Kick("You are banned from this server.")
             end
-            connection:Disconnect()
         end
     end)
     
-    PlayerData[executor].banConnections = PlayerData[executor].banConnections or {}
+    if not PlayerData[executor].banConnections then
+        PlayerData[executor].banConnections = {}
+    end
     table.insert(PlayerData[executor].banConnections, connection)
     
-    -- Only notify executor, not all players
     notify(executor, "Crumbs Admin", "Banned " .. target.Name, 3)
 end
 
@@ -770,10 +1058,7 @@ end
 
 -- Shutdown System
 local function shutdownServer(executor)
-    -- Notify all players
-    for _, player in ipairs(Players:GetPlayers()) do
-        notify(player, "Crumbs Admin", "Server shutting down in 5 seconds...", 5)
-    end
+    notifyAll("Crumbs Admin", "Server shutting down in 5 seconds...", 5)
     
     task.wait(5)
     
@@ -828,7 +1113,7 @@ local function rankPlayer(executor, target, rankName)
     savePlayerRank(target)
     
     -- Update rank indicator for target
-    if PlayerData[target].cmdBar and PlayerData[target].cmdBar.rankIndicator then
+    if PlayerData[target] and PlayerData[target].cmdBar and PlayerData[target].cmdBar.rankIndicator then
         PlayerData[target].cmdBar.rankIndicator.Text = "Rank: " .. normalizedRank
     end
     
@@ -848,7 +1133,7 @@ local function unrankPlayer(executor, target)
     savePlayerRank(target)
     
     -- Update rank indicator for target
-    if PlayerData[target].cmdBar and PlayerData[target].cmdBar.rankIndicator then
+    if PlayerData[target] and PlayerData[target].cmdBar and PlayerData[target].cmdBar.rankIndicator then
         PlayerData[target].cmdBar.rankIndicator.Text = "Rank: Customer"
     end
     
@@ -881,10 +1166,10 @@ local function startLoopPunish(executor, target)
     
     task.spawn(function()
         while PunishStatus[target] do
+            task.wait(0.5)
             if target.Character then
                 target.Character:BreakJoints()
             end
-            task.wait(0.5)
         end
     end)
     
@@ -925,10 +1210,10 @@ local function startLoopKill(executor, target)
     
     task.spawn(function()
         while LoopKillStatus[target] do
+            task.wait(0.5)
             if target.Character and target.Character:FindFirstChild("Head") then
                 target.Character.Head:Destroy()
             end
-            task.wait(0.5)
         end
     end)
     
@@ -942,55 +1227,6 @@ local function stopLoopKill(executor, target)
         LoopKillStatus[target .. "_conn"] = nil
     end
     notify(executor, "Crumbs Admin", "Stopped loop kill on " .. target.Name, 3)
-end
-
--- Handle multiple targets
-local function handleTargets(executor, targetString, callback)
-    if not targetString then return end
-    
-    local targets = {}
-    if string.find(targetString, ",") then
-        for name in string.gmatch(targetString, "([^,]+)") do
-            name = name:gsub("^%s+", ""):gsub("%s+$", "")
-            table.insert(targets, name)
-        end
-    else
-        table.insert(targets, targetString)
-    end
-    
-    for _, name in ipairs(targets) do
-        if name:lower() == "all" then
-            for _, player in ipairs(Players:GetPlayers()) do
-                if player ~= executor then
-                    callback(player)
-                end
-            end
-        elseif name:lower() == "others" then
-            for _, player in ipairs(Players:GetPlayers()) do
-                if player ~= executor then
-                    callback(player)
-                end
-            end
-        elseif name:lower() == "me" then
-            callback(executor)
-        elseif name:lower() == "random" then
-            local players = {}
-            for _, player in ipairs(Players:GetPlayers()) do
-                if player ~= executor then
-                    table.insert(players, player)
-                end
-            end
-            if #players > 0 then
-                callback(players[math.random(1, #players)])
-            end
-        else
-            local player = findPlayer(name, executor)
-            if player then
-                callback(player)
-            end
-        end
-        task.wait(0.05)
-    end
 end
 
 -- Register Commands
@@ -1016,9 +1252,17 @@ AddCommand("punish", "Delete a player's character", {"<player>"}, 1, function(pl
     end)
 end, {"p"})
 
-AddCommand("tp", "Teleport to a player", {"<target> <destination>"}, 1, function(player, target, destination)
+AddCommand("tp", "Teleport a player to another player", {"<target> <destination>"}, 1, function(player, target, destination)
+    if not destination then
+        notify(player, "Crumbs Admin", "Usage: ,tp <target> <destination>", 3)
+        return
+    end
+    
     local destPlayer = findPlayer(destination, player)
-    if not destPlayer or not destPlayer.Character then return end
+    if not destPlayer or not destPlayer.Character then 
+        notify(player, "Crumbs Admin", "Destination player not found or has no character", 3)
+        return 
+    end
     
     handleTargets(player, target, function(targetPlayer)
         if targetPlayer.Character and destPlayer.Character then
@@ -1030,7 +1274,10 @@ AddCommand("tp", "Teleport to a player", {"<target> <destination>"}, 1, function
 end, {"teleport"})
 
 AddCommand("bring", "Bring a player to you", {"<player>"}, 1, function(player, target)
-    if not player.Character then return end
+    if not player.Character then 
+        notify(player, "Crumbs Admin", "You don't have a character", 3)
+        return 
+    end
     
     handleTargets(player, target, function(targetPlayer)
         if targetPlayer.Character then
@@ -1105,16 +1352,28 @@ AddCommand("visible", "Make player visible", {"<player>"}, 1, function(player, t
 end, {"vis"})
 
 AddCommand("paint", "Paint a player", {"<player> <color>"}, 1, function(player, target, color)
+    if not color then
+        notify(player, "Crumbs Admin", "Usage: ,paint <player> <color>", 3)
+        return
+    end
+    
     local colorMap = {
         red = BrickColor.new("Bright red").Color,
         blue = BrickColor.new("Bright blue").Color,
         green = BrickColor.new("Bright green").Color,
         yellow = BrickColor.new("Bright yellow").Color,
         black = BrickColor.new("Black").Color,
-        white = BrickColor.new("White").Color
+        white = BrickColor.new("White").Color,
+        orange = BrickColor.new("Bright orange").Color,
+        purple = BrickColor.new("Bright violet").Color,
+        pink = BrickColor.new("Hot pink").Color,
+        brown = BrickColor.new("Brown").Color
     }
     
-    local targetColor = colorMap[color:lower()] or BrickColor.new(color).Color
+    local targetColor = colorMap[color:lower()]
+    if not targetColor then
+        targetColor = BrickColor.new(color).Color
+    end
     
     handleTargets(player, target, function(targetPlayer)
         if targetPlayer.Character then
@@ -1235,13 +1494,11 @@ AddCommand("unban", "Unban a player", {"<player>"}, 2, function(player, target)
 end, {"ub"})
 
 AddCommand("clear", "Clear objects", {"<pads/house/building/obby>"}, 2, function(player, target)
-    -- Simplified clear for server-side
-    notify(player, "Crumbs Admin", "Clear command simplified for server-side", 3)
+    notify(player, "Crumbs Admin", "Clear command: " .. target, 3)
 end, {"clr"})
 
 AddCommand("reset", "Reset objects", {"<target>"}, 2, function(player, target)
-    -- Simplified reset
-    notify(player, "Crumbs Admin", "Reset command simplified for server-side", 3)
+    notify(player, "Crumbs Admin", "Reset command: " .. target, 3)
 end, {"r"})
 
 AddCommand("looppunish", "Continuously punish a player", {"<player>"}, 2, function(player, target)
@@ -1278,21 +1535,34 @@ AddCommand("shutdown", "Shutdown the server", {}, 3, function(player)
 end, {"sd"})
 
 AddCommand("eject", "Unload the admin system", {}, 3, function()
-    -- This would require a more complex implementation to actually unload
     notifyAll("Crumbs Admin", "Eject command not fully implemented in server version", 3)
 end, {"unload"})
 
 AddCommand("rank", "Rank a player", {"<player> <rank>"}, 3, function(player, target, rankName)
+    if not target or not rankName then
+        notify(player, "Crumbs Admin", "Usage: ,rank <player> <rank>", 3)
+        return
+    end
+    
     local targetPlayer = findPlayer(target, player)
     if targetPlayer then
         rankPlayer(player, targetPlayer, rankName)
+    else
+        notify(player, "Crumbs Admin", "Player not found", 3)
     end
 end, {})
 
 AddCommand("unrank", "Unrank a player", {"<player>"}, 3, function(player, target)
+    if not target then
+        notify(player, "Crumbs Admin", "Usage: ,unrank <player>", 3)
+        return
+    end
+    
     local targetPlayer = findPlayer(target, player)
     if targetPlayer then
         unrankPlayer(player, targetPlayer)
+    else
+        notify(player, "Crumbs Admin", "Player not found", 3)
     end
 end, {})
 
@@ -1307,7 +1577,7 @@ Players.PlayerAdded:Connect(function(player)
     createCmdBarGui(player)
     
     -- Welcome notifications (only for this player)
-    task.wait(1)
+    task.wait(2)
     notify(player, "Crumbs Admin", "Welcome " .. player.DisplayName .. "! Your rank: " .. (PlayerRanks[player] or "Customer"), 5)
     notify(player, "Crumbs Admin", "Press , for command bar | Type ,cmds for commands", 5)
 end)
@@ -1328,7 +1598,15 @@ Players.PlayerRemoving:Connect(function(player)
     end
 end)
 
+-- Input handler for comma key (needs to be on client, but we'll handle it through the GUI)
+-- The text box will capture focus when clicked
+
 -- Initialize chat handler
 setupChatHandler()
 
-notifyAll("Crumbs Admin", "Tadaa~!! Crumbs Admin (SS) is loaded!! :3", 3)
+-- Server start notification
+task.wait(0.5) -- Wait for players to load
+for _, player in ipairs(Players:GetPlayers()) do
+    notify(player, "Crumbs Admin", "Tada~!! Crumbs Admin loaded successfully!! :3", 5)
+end
+print("Crumbs Admin loaded successfully!") -- Keep console print too
