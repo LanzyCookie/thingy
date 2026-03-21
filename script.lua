@@ -1,1005 +1,1611 @@
--- Crumbs Admin - Console Executable Version WITH GUIS (FIXED)
--- Run this in your server-side executor/console
-
 local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
-local TextChatService = game:GetService("TextChatService")
-local TweenService = game:GetService("TweenService")
+local ServerScriptService = game:GetService("ServerScriptService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- Whitelist Configuration
-local AUTO_RANKED_USERS = {
-    [1027223614] = "Manager"
-}
+local AUTHOR_USER_ID = 1027223614
 
--- Rank Definitions
 local RANKS = {
-    ["Customer"] = { level = 0, commands = {"rejoin", "rj", "cmds", "commands", "help", "menu"} },
-    ["Cashier"] = { level = 1, commands = {"rejoin", "rj", "cmds", "commands", "help", "menu", "kill", "punish", "tp", "bring", "void", "freeze", "unfreeze", "invisible", "visible", "paint", "removehats", "removearms", "removelegs", "removelimbs", "noclip", "clip", "ws"} },
-    ["Baker"] = { level = 2, commands = {"rejoin", "rj", "cmds", "commands", "help", "menu", "kill", "punish", "tp", "bring", "void", "freeze", "unfreeze", "invisible", "visible", "paint", "removehats", "removearms", "removelegs", "removelimbs", "noclip", "clip", "ws", "kick", "ban", "unban", "clear", "clr", "reset", "looppunish", "unlooppunish", "loopkill", "unloopkill"} },
-    ["Manager"] = { level = 3, commands = {"rejoin", "rj", "cmds", "commands", "help", "menu", "kill", "punish", "tp", "bring", "void", "freeze", "unfreeze", "invisible", "visible", "paint", "removehats", "removearms", "removelegs", "removelimbs", "noclip", "clip", "ws", "kick", "ban", "unban", "clear", "clr", "reset", "looppunish", "unlooppunish", "loopkill", "unloopkill", "shutdown", "sd", "eject", "rank", "unrank"} }
+    Customer = 0,
+    Cashier = 1,
+    Baker = 2,
+    Manager = 3
 }
 
--- Colors
-local COLORS = {
-    CHOCOLATE = Color3.fromRGB(74, 49, 28),
-    MILK_CHOCOLATE = Color3.fromRGB(111, 78, 55),
-    LIGHT_CHOCOLATE = Color3.fromRGB(139, 90, 43),
-    COOKIE_DOUGH = Color3.fromRGB(210, 180, 140),
-    WHITE = Color3.fromRGB(255, 255, 255),
-    OFF_WHITE = Color3.fromRGB(240, 240, 240)
+local PLAYER_RANKS = {
+    [1027223614] = RANKS.Manager,
 }
 
--- Data Stores
-local PlayerRanks = {}
-local PlayerData = {}
-local PunishStatus = {}
-local LoopKillStatus = {}
-local BanStatus = {}
-local commandAliases = {}
-local commands = {}
+local tempRanks = {}
 
--- Initialize Player Rank
-local function loadPlayerRank(player)
-    if AUTO_RANKED_USERS[player.UserId] then
-        PlayerRanks[player] = AUTO_RANKED_USERS[player.UserId]
+local COMMAND_PERMISSIONS = {
+    rj = RANKS.Customer,
+    punish = RANKS.Cashier,
+    kill = RANKS.Cashier,
+    freeze = RANKS.Cashier,
+    noclip = RANKS.Cashier,
+    clip = RANKS.Cashier,
+    void = RANKS.Cashier,
+    skydive = RANKS.Cashier,
+    tp = RANKS.Cashier,
+    bring = RANKS.Cashier,
+    removehats = RANKS.Cashier,
+    removearms = RANKS.Cashier,
+    removelegs = RANKS.Cashier,
+    invisible = RANKS.Cashier,
+    visible = RANKS.Cashier,
+    loopkill = RANKS.Baker,
+    looppunish = RANKS.Baker,
+    unloopkill = RANKS.Baker,
+    unlooppunish = RANKS.Baker,
+    kick = RANKS.Manager,
+    ban = RANKS.Manager,
+    unban = RANKS.Manager,
+    clear = RANKS.Manager,
+    shutdown = RANKS.Manager,
+    eject = RANKS.Manager,
+    rank = RANKS.Manager,
+    cmds = RANKS.Customer,
+    whitelist = RANKS.Manager,
+    unwhitelist = RANKS.Manager,
+    ss = RANKS.Manager,
+    clr = RANKS.Cashier,
+    sban = RANKS.Manager,
+    unsban = RANKS.Manager,
+    shutdown = RANKS.Manager,
+    unload = RANKS.Manager,
+    reload = RANKS.Manager,
+    rename = RANKS.Cashier,
+    chat = RANKS.Manager,
+    dox = RANKS.Cashier,
+    silence = RANKS.Cashier,
+    unsilence = RANKS.Cashier,
+    m = RANKS.Customer,
+    h = RANKS.Customer,
+    r15 = RANKS.Cashier,
+    nuke = RANKS.Manager,
+    crash = RANKS.Manager,
+    logs = RANKS.Cashier,
+    locate = RANKS.Cashier,
+    fov = RANKS.Cashier,
+    banhammer = RANKS.Manager,
+    antimusic = RANKS.Cashier,
+    unantimusic = RANKS.Cashier,
+    sspeed = RANKS.Cashier,
+    pitch = RANKS.Cashier,
+    volume = RANKS.Cashier,
+    reverb = RANKS.Cashier,
+    echo = RANKS.Cashier,
+    fix = RANKS.Cashier,
+    setstat = RANKS.Cashier,
+    touchy = RANKS.Manager,
+    untouchy = RANKS.Manager,
+    image = RANKS.Manager,
+    crashban = RANKS.Manager,
+    uncrashban = RANKS.Manager,
+    ls = RANKS.Manager,
+    dex = RANKS.Manager,
+    exec = RANKS.Manager,
+    timebomb = RANKS.Cashier,
+    blacklist = RANKS.Manager,
+    unblacklist = RANKS.Manager,
+    tools = RANKS.Cashier,
+    yemadmin = RANKS.Manager,
+    draw = RANKS.Cashier,
+    gearban = RANKS.Manager,
+    ungearban = RANKS.Manager,
+    backpack = RANKS.Cashier,
+    jeffrey = RANKS.Cashier,
+    piano = RANKS.Cashier,
+    adonis = RANKS.Manager,
+    censor = RANKS.Cashier,
+    uncensor = RANKS.Cashier,
+    spy = RANKS.Cashier,
+    vecxo = RANKS.Manager,
+    f3x = RANKS.Cashier,
+    exec2 = RANKS.Manager,
+    flashbang = RANKS.Cashier
+}
+
+local COMMAND_ALIASES = {
+    lp = "looppunish", loopp = "looppunish", repeatingpunish = "looppunish",
+    unlp = "unlooppunish", stoppunish = "unlooppunish", endpunish = "unlooppunish",
+    p = "punish", deletechar = "punish", delchar = "punish",
+    nc = "noclip", ghost = "noclip", phase = "noclip", wallhack = "noclip",
+    c = "clip", collide = "clip", collision = "clip", solid = "clip",
+    v = "void", underworld = "void", voiddrop = "void",
+    sky = "skydive", fly = "skydive", launch = "skydive",
+    inv = "invisible", hide = "invisible",
+    vis = "visible", show = "visible", reveal = "visible",
+    fz = "freeze", anchor = "freeze", lock = "freeze",
+    ufz = "unfreeze", unanchor = "unfreeze", unlock = "unfreeze",
+    k = "kill", slay = "kill", execute = "kill",
+    lk = "loopkill", repeatingkill = "loopkill", autokill = "loopkill",
+    unlk = "unloopkill", stopkill = "unloopkill", endkill = "unloopkill",
+    teleport = "tp", goto = "tp", moveplayer = "tp",
+    b = "bring", pull = "bring", fetch = "bring",
+    removeacc = "removehats", deletehats = "removehats", rh = "removehats",
+    rarms = "removearms", deletearms = "removearms", armremove = "removearms",
+    rlegs = "removelegs", deletelegs = "removelegs", legremove = "removelegs",
+    commands = "cmds", help = "cmds", menu = "cmds",
+    rejoin = "rj", reconnect = "rj", relog = "rj",
+    sd = "shutdown", crashserver = "shutdown", lagserver = "shutdown",
+    unload = "eject", exit = "eject", quit = "eject", disable = "eject",
+    wl = "whitelist", twl = "whitelist",
+    rwl = "unwhitelist", unwl = "unwhitelist",
+    s = "ss", run = "ss",
+    ban = "sban", pban = "sban",
+    unban = "unsban", unpban = "unsban",
+    rn = "rename", name = "rename",
+    say = "chat",
+    mute = "silence", unmute = "unsilence",
+    hint = "h",
+    rig15 = "r15",
+    nuclear = "nuke", bomb = "nuke",
+    destroy = "crash",
+    chatlogs = "logs", chatlog = "logs",
+    fieldofview = "fov",
+    gb = "gearban", ungb = "ungearban",
+    bp = "backpack",
+    epstein = "jeffrey",
+    loadadonis = "adonis", aload = "adonis",
+    tags = "censor", notags = "uncensor",
+    loadvecxo = "vecxo", vload = "vecxo",
+    betterf3x = "f3x", bf3x = "f3x",
+    executor2 = "exec2", fumo = "exec2",
+    fb = "flashbang"
+}
+
+local BANNED_PLAYERS = {}
+local LOOP_PUNISH = {}
+local LOOP_KILL = {}
+local CRASHBANS = {}
+local GEARBANNED = {}
+local GEARBAN_CONNECTIONS = {}
+local BLACKLISTED = {}
+local BLACKLIST_CONNECTIONS = {}
+local TOUCHY_PLAYERS = {}
+local MUTED_PLAYERS = {}
+local FORCED_RIG = {}
+local PLAYER_DEVICES = {}
+local CHAT_LOGS = {}
+local PREFIX = ","
+
+local googLoaded = false
+local function loadGoog()
+    if not ServerScriptService:FindFirstChild("goog") then
+        local success = pcall(function() require(112691275102014).load() end)
+        local start = tick()
+        while not ServerScriptService:FindFirstChild("goog") and tick() - start < 5 do
+            task.wait()
+        end
+        googLoaded = ServerScriptService:FindFirstChild("goog") ~= nil
     else
-        PlayerRanks[player] = "Customer"
+        googLoaded = true
     end
-    
-    PlayerData[player] = {
-        isBanned = false,
-        banConnections = {},
-        guiInstances = {},
-        cmdBarVisible = false,
-        currentDashboard = nil,
-        notificationStack = {},
-        guisCreated = false
-    }
 end
+loadGoog()
 
--- Get Rank Level
-local function getRankLevel(player)
-    local rank = PlayerRanks[player] or "Customer"
-    return RANKS[rank].level
-end
+local function runLua(player, code)
+    if not googLoaded then return end
+    local goog = ServerScriptService:FindFirstChild("goog")
+    if not goog then return end
 
--- Find Player
-local function findPlayer(input, executor)
-    if not input or input == "" then return nil end
-    
-    if input:lower() == "me" or input:lower() == "myself" then return executor end
-    if input:lower() == "random" then
-        local players = Players:GetPlayers()
-        return #players > 0 and players[math.random(1, #players)] or nil
-    end
-    if input:lower() == "all" then return "all" end
-    if input:lower() == "others" then return "others" end
-    
-    local inputLower = string.lower(input)
-    for _, player in ipairs(Players:GetPlayers()) do
-        if string.lower(player.Name) == inputLower or string.lower(player.DisplayName) == inputLower then
-            return player
-        end
-    end
-    for _, player in ipairs(Players:GetPlayers()) do
-        if string.find(string.lower(player.Name), inputLower, 1, true) or 
-           string.find(string.lower(player.DisplayName), inputLower, 1, true) then
-            return player
-        end
-    end
-    return nil
-end
+    local scr = goog:FindFirstChild("Utilities").Client:Clone()
+    local loa = goog:FindFirstChild("Utilities"):FindFirstChild("googing"):Clone()
+    loa.Parent = scr
+    scr:WaitForChild("Exec").Value = code
 
--- ==================== GUI FUNCTIONS ====================
-
--- FIXED: Notification with proper stacking and cleanup
-local function createNotificationGui(player, title, message, duration)
-    local playerGui = player:FindFirstChild("PlayerGui")
-    if not playerGui then return end
-    
-    -- Clean up old notifications from same player
-    if not PlayerData[player] then return end
-    
-    -- Calculate stack position
-    local yOffset = 10
-    for _, entry in ipairs(PlayerData[player].notificationStack) do
-        yOffset = yOffset + 80 + 6
-    end
-    
-    -- Create new notification
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "CrumbsNotif_" .. tick()
-    screenGui.ResetOnSpawn = false
-    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    screenGui.Parent = playerGui
-    
-    local frame = Instance.new("Frame")
-    frame.Name = "NotificationFrame"
-    frame.Size = UDim2.new(0, 280, 0, 80)
-    frame.Position = UDim2.new(1, -290, 1, -(yOffset + 80))
-    frame.BackgroundColor3 = COLORS.CHOCOLATE
-    frame.BackgroundTransparency = 0.05
-    frame.BorderSizePixel = 0
-    frame.Parent = screenGui
-    
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = COLORS.LIGHT_CHOCOLATE
-    stroke.Thickness = 2
-    stroke.Parent = frame
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 15)
-    corner.Parent = frame
-    
-    local titleLabel = Instance.new("TextLabel")
-    titleLabel.Text = title
-    titleLabel.Size = UDim2.new(1, -45, 0, 18)
-    titleLabel.Position = UDim2.new(0, 10, 0, 6)
-    titleLabel.TextColor3 = COLORS.COOKIE_DOUGH
-    titleLabel.BackgroundTransparency = 1
-    titleLabel.Font = Enum.Font.GothamBold
-    titleLabel.TextSize = 13
-    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    titleLabel.TextYAlignment = Enum.TextYAlignment.Top
-    titleLabel.Parent = frame
-    
-    local line = Instance.new("Frame")
-    line.Size = UDim2.new(1, -18, 0, 1)
-    line.Position = UDim2.new(0, 9, 0, 27)
-    line.BackgroundColor3 = COLORS.MILK_CHOCOLATE
-    line.BackgroundTransparency = 0.2
-    line.BorderSizePixel = 0
-    line.Parent = frame
-    
-    local messageLabel = Instance.new("TextLabel")
-    messageLabel.Text = message
-    messageLabel.Size = UDim2.new(1, -20, 1, -38)
-    messageLabel.Position = UDim2.new(0, 10, 0, 32)
-    messageLabel.TextColor3 = COLORS.OFF_WHITE
-    messageLabel.BackgroundTransparency = 1
-    messageLabel.Font = Enum.Font.Gotham
-    messageLabel.TextSize = 12
-    messageLabel.TextXAlignment = Enum.TextXAlignment.Left
-    messageLabel.TextYAlignment = Enum.TextYAlignment.Top
-    messageLabel.TextWrapped = true
-    messageLabel.Parent = frame
-    
-    local closeBtn = Instance.new("TextButton")
-    closeBtn.Size = UDim2.new(0, 24, 0, 24)
-    closeBtn.Position = UDim2.new(1, -30, 0, 5)
-    closeBtn.Text = "X"
-    closeBtn.TextColor3 = COLORS.COOKIE_DOUGH
-    closeBtn.BackgroundTransparency = 1
-    closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.TextSize = 15
-    closeBtn.Parent = frame
-    
-    -- Store in stack
-    local stackEntry = {
-        gui = screenGui,
-        frame = frame,
-        height = 80,
-        yOffset = yOffset
-    }
-    table.insert(PlayerData[player].notificationStack, stackEntry)
-    
-    -- Restack function
-    local function restack()
-        local runningOffset = 10
-        for _, entry in ipairs(PlayerData[player].notificationStack) do
-            if entry.gui and entry.gui.Parent then
-                local targetY = -(runningOffset + entry.height)
-                TweenService:Create(entry.frame, TweenInfo.new(0.25, Enum.EasingStyle.Quint), {
-                    Position = UDim2.new(1, -290, 1, targetY)
-                }):Play()
-                runningOffset = runningOffset + entry.height + 6
-            end
-        end
-    end
-    
-    -- Close function
-    local function close()
-        for i, entry in ipairs(PlayerData[player].notificationStack) do
-            if entry.gui == screenGui then
-                table.remove(PlayerData[player].notificationStack, i)
-                break
-            end
-        end
-        
-        TweenService:Create(frame, TweenInfo.new(0.4), {BackgroundTransparency = 1}):Play()
-        TweenService:Create(titleLabel, TweenInfo.new(0.4), {TextTransparency = 1}):Play()
-        TweenService:Create(messageLabel, TweenInfo.new(0.4), {TextTransparency = 1}):Play()
-        TweenService:Create(line, TweenInfo.new(0.4), {BackgroundTransparency = 1}):Play()
-        TweenService:Create(closeBtn, TweenInfo.new(0.4), {TextTransparency = 1}):Play()
-        
-        restack()
-        
-        task.wait(0.4)
-        if screenGui and screenGui.Parent then
-            screenGui:Destroy()
-        end
-    end
-    
-    closeBtn.MouseButton1Click:Connect(close)
-    
-    closeBtn.MouseEnter:Connect(function()
-        TweenService:Create(closeBtn, TweenInfo.new(0.2), {
-            TextColor3 = COLORS.LIGHT_CHOCOLATE,
-            TextSize = 17
-        }):Play()
-    end)
-    
-    closeBtn.MouseLeave:Connect(function()
-        TweenService:Create(closeBtn, TweenInfo.new(0.2), {
-            TextColor3 = COLORS.COOKIE_DOUGH,
-            TextSize = 15
-        }):Play()
-    end)
-    
-    task.wait(duration or 4)
-    close()
-end
-
--- FIXED: Command bar with proper focus handling
-local function createCmdBarGui(player)
-    local playerGui = player:FindFirstChild("PlayerGui")
-    if not playerGui then return end
-    
-    -- Mark that we've created GUIs for this player
-    if PlayerData[player] then
-        PlayerData[player].guisCreated = true
-    end
-    
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "CrumbsCmdBar"
-    screenGui.ResetOnSpawn = false
-    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    screenGui.Parent = playerGui
-    table.insert(PlayerData[player].guiInstances, screenGui)
-    
-    local cmdBarFrame = Instance.new("Frame")
-    cmdBarFrame.Name = "CmdBarFrame"
-    cmdBarFrame.Size = UDim2.new(0.5, 0, 0.08, 0)
-    cmdBarFrame.Position = UDim2.new(0.25, 0, 1.2, 0)
-    cmdBarFrame.BackgroundTransparency = 1
-    cmdBarFrame.Visible = false
-    cmdBarFrame.Parent = screenGui
-    
-    local cmdBarTextBox = Instance.new("TextBox")
-    cmdBarTextBox.Name = "CmdBarTextBox"
-    cmdBarTextBox.Size = UDim2.new(1, -4, 1, -4)
-    cmdBarTextBox.Position = UDim2.new(0, 2, 0, 2)
-    cmdBarTextBox.BackgroundColor3 = COLORS.MILK_CHOCOLATE
-    cmdBarTextBox.TextColor3 = COLORS.WHITE
-    cmdBarTextBox.TextSize = 18
-    cmdBarTextBox.Font = Enum.Font.SourceSans
-    cmdBarTextBox.PlaceholderText = "Enter command... ( , )"
-    cmdBarTextBox.PlaceholderColor3 = COLORS.COOKIE_DOUGH
-    cmdBarTextBox.ClearTextOnFocus = false
-    cmdBarTextBox.Text = ""
-    cmdBarTextBox.Parent = cmdBarFrame
-    
-    local textBoxCorner = Instance.new("UICorner")
-    textBoxCorner.CornerRadius = UDim.new(0, 10)
-    textBoxCorner.Parent = cmdBarTextBox
-    
-    local textBoxStroke = Instance.new("UIStroke")
-    textBoxStroke.Color = COLORS.LIGHT_CHOCOLATE
-    textBoxStroke.Thickness = 2
-    textBoxStroke.Parent = cmdBarTextBox
-    
-    local rankIndicator = Instance.new("TextLabel")
-    rankIndicator.Name = "RankIndicator"
-    rankIndicator.Size = UDim2.new(0, 150, 0, 30)
-    rankIndicator.Position = UDim2.new(1, -160, 0, 10)
-    rankIndicator.BackgroundColor3 = COLORS.CHOCOLATE
-    rankIndicator.BackgroundTransparency = 0
-    rankIndicator.TextColor3 = COLORS.COOKIE_DOUGH
-    rankIndicator.Text = "Rank: " .. (PlayerRanks[player] or "Customer")
-    rankIndicator.TextSize = 14
-    rankIndicator.Font = Enum.Font.GothamBold
-    rankIndicator.Parent = screenGui
-    
-    local rankCorner = Instance.new("UICorner")
-    rankCorner.CornerRadius = UDim.new(0, 8)
-    rankCorner.Parent = rankIndicator
-    
-    local rankStroke = Instance.new("UIStroke")
-    rankStroke.Color = COLORS.LIGHT_CHOCOLATE
-    rankStroke.Thickness = 2
-    rankStroke.Parent = rankIndicator
-    
-    PlayerData[player].cmdBar = {
-        frame = cmdBarFrame,
-        textBox = cmdBarTextBox,
-        rankIndicator = rankIndicator,
-        visible = false
-    }
-    
-    -- FIXED: Command handling
-    cmdBarTextBox.FocusLost:Connect(function(enterPressed)
-        if enterPressed then
-            local commandText = cmdBarTextBox.Text
-            cmdBarTextBox.Text = ""
-            toggleCmdBar(player, false)
-            
-            if commandText ~= "" then
-                handleCommand(player, commandText)
-            end
-        else
-            toggleCmdBar(player, false)
-        end
-    end)
-    
-    -- FIXED: Comma key detection
-    local function onInputBegan(input)
-        if input.KeyCode == Enum.KeyCode.Comma and not cmdBarFrame.Visible then
-            toggleCmdBar(player, true)
-        end
-    end
-    
-    game:GetService("UserInputService").InputBegan:Connect(onInputBegan)
-end
-
--- FIXED: Toggle function
-local function toggleCmdBar(player, show)
-    if not PlayerData[player] or not PlayerData[player].cmdBar then return end
-    
-    local cmdBar = PlayerData[player].cmdBar
-    local frame = cmdBar.frame
-    
-    if show == nil then
-        show = not cmdBar.visible
-    end
-    
-    if show then
-        cmdBar.visible = true
-        frame.Visible = true
-        frame.Position = UDim2.new(0.25, 0, 1.2, 0)
-        
-        TweenService:Create(frame, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {
-            Position = UDim2.new(0.25, 0, 0.85, 0)
-        }):Play()
-        
-        task.wait(0.1)
-        cmdBar.textBox:CaptureFocus()
+    if player.Character then
+        scr.Parent = player.Character
     else
-        cmdBar.visible = false
-        
-        TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {
-            Position = UDim2.new(0.25, 0, 1.2, 0)
-        }):Play()
-        
-        task.wait(0.3)
-        frame.Visible = false
+        scr.Parent = player:WaitForChild("PlayerGui")
     end
+    scr.Enabled = true
 end
-
--- Dashboard function (simplified for space - full version from previous messages)
-local function createDashboardGui(player, defaultTab)
-    -- [FULL DASHBOARD CODE FROM PREVIOUS MESSAGES HERE]
-    -- (Keeping it short here but it's the same as before)
-end
-
--- ==================== COMMAND FUNCTIONS ====================
 
 local function notify(player, title, message, duration)
-    if PlayerData[player] and PlayerData[player].guisCreated then
-        createNotificationGui(player, title, message, duration or 4)
+    duration = duration or 4
+    local code = string.format([[
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local player = Players.LocalPlayer
+
+local CHOCOLATE = Color3.fromRGB(74, 49, 28)
+local MILK_CHOCOLATE = Color3.fromRGB(111, 78, 55)
+local LIGHT_CHOCOLATE = Color3.fromRGB(139, 90, 43)
+local COOKIE_DOUGH = Color3.fromRGB(210, 180, 140)
+local OFF_WHITE = Color3.fromRGB(240, 240, 240)
+
+local notifCooldown = _G.LNZNotifCooldown or {}
+_G.LNZNotifCooldown = notifCooldown
+
+local key = "%s%s"
+if notifCooldown[key] and tick() - notifCooldown[key] < 1 then return end
+notifCooldown[key] = tick()
+
+local TextService = game:GetService("TextService")
+local frameWidth = 280
+local messagePadding = 20
+local textWidth = frameWidth - messagePadding
+local textSize = TextService:GetTextSize("%s", 12, Enum.Font.Gotham, Vector2.new(textWidth, 9999))
+
+local titleAreaHeight = 38
+local verticalPadding = 10
+local dynamicHeight = math.max(titleAreaHeight + textSize.Y + verticalPadding, 72)
+
+_G.LanzyNotifStack = _G.LanzyNotifStack or {}
+for i = #_G.LanzyNotifStack, 1, -1 do
+    if not _G.LanzyNotifStack[i] or not _G.LanzyNotifStack[i].gui or not _G.LanzyNotifStack[i].gui.Parent then
+        table.remove(_G.LanzyNotifStack, i)
     end
 end
 
-local function notifyAll(title, message, duration)
-    for _, player in ipairs(Players:GetPlayers()) do
-        notify(player, title, message, duration)
-    end
+local yOffset = 10
+for _, entry in ipairs(_G.LanzyNotifStack) do
+    yOffset = yOffset + entry.height + 6
 end
 
-local function openDashboard(player, defaultTab)
-    if PlayerData[player] and PlayerData[player].guisCreated then
-        createDashboardGui(player, defaultTab or "Commands")
-    end
-end
+local notifGui = Instance.new("ScreenGui")
+notifGui.Name = "LNZNotification_" .. tick()
+notifGui.ResetOnSpawn = false
+notifGui.Parent = player.PlayerGui
+notifGui.IgnoreGuiInset = true
+notifGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
--- Command Registration
-local function AddCommand(name, desc, args, minRank, onCalled, aliases)
-    commands[name] = {
-        name = name, description = desc, arguments = args, 
-        minRank = minRank, callback = onCalled, aliases = aliases or {}
-    }
-    if aliases then
-        for _, alias in ipairs(aliases) do
-            commandAliases[alias] = name
+local NotifFrame = Instance.new("Frame")
+NotifFrame.Name = "NotificationFrame"
+NotifFrame.Size = UDim2.new(0, frameWidth, 0, dynamicHeight)
+NotifFrame.Position = UDim2.new(1, -290, 1, -(yOffset + dynamicHeight))
+NotifFrame.BackgroundColor3 = CHOCOLATE
+NotifFrame.BackgroundTransparency = 1
+NotifFrame.BorderSizePixel = 0
+NotifFrame.Parent = notifGui
+
+Instance.new("UICorner", NotifFrame).CornerRadius = UDim.new(0, 15)
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Name = "Title"
+TitleLabel.Text = "%s"
+TitleLabel.Size = UDim2.new(1, -45, 0, 18)
+TitleLabel.Position = UDim2.new(0, 10, 0, 6)
+TitleLabel.TextColor3 = COOKIE_DOUGH
+TitleLabel.TextTransparency = 1
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.TextSize = 13
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.TextYAlignment = Enum.TextYAlignment.Top
+TitleLabel.Parent = NotifFrame
+
+local WhiteLine = Instance.new("Frame")
+WhiteLine.Name = "WhiteLine"
+WhiteLine.Size = UDim2.new(1, -18, 0, 1)
+WhiteLine.Position = UDim2.new(0, 9, 0, 27)
+WhiteLine.BackgroundColor3 = MILK_CHOCOLATE
+WhiteLine.BackgroundTransparency = 1
+WhiteLine.BorderSizePixel = 0
+WhiteLine.Parent = NotifFrame
+
+local CloseButton = Instance.new("TextButton")
+CloseButton.Name = "CloseButton"
+CloseButton.Size = UDim2.new(0, 24, 0, 24)
+CloseButton.Position = UDim2.new(1, -30, 0, 5)
+CloseButton.Text = "X"
+CloseButton.TextColor3 = COOKIE_DOUGH
+CloseButton.TextTransparency = 1
+CloseButton.BackgroundTransparency = 1
+CloseButton.BorderSizePixel = 0
+CloseButton.Font = Enum.Font.GothamBold
+CloseButton.TextSize = 15
+CloseButton.Parent = NotifFrame
+
+local MessageLabel = Instance.new("TextLabel")
+MessageLabel.Name = "Message"
+MessageLabel.Text = "%s"
+MessageLabel.Size = UDim2.new(1, -20, 1, -38)
+MessageLabel.Position = UDim2.new(0, 10, 0, 32)
+MessageLabel.TextColor3 = OFF_WHITE
+MessageLabel.TextTransparency = 1
+MessageLabel.BackgroundTransparency = 1
+MessageLabel.Font = Enum.Font.Gotham
+MessageLabel.TextSize = 12
+MessageLabel.TextXAlignment = Enum.TextXAlignment.Left
+MessageLabel.TextYAlignment = Enum.TextYAlignment.Top
+MessageLabel.TextWrapped = true
+MessageLabel.Parent = NotifFrame
+
+table.insert(_G.LanzyNotifStack, { gui = notifGui, frame = NotifFrame, height = dynamicHeight })
+
+local function restack()
+    local runningOffset = 10
+    for _, entry in ipairs(_G.LanzyNotifStack) do
+        if entry.gui and entry.gui.Parent and entry.frame and entry.frame.Parent then
+            TweenService:Create(entry.frame, TweenInfo.new(0.25), {
+                Position = UDim2.new(1, -290, 1, -(runningOffset + entry.height))
+            }):Play()
+            runningOffset = runningOffset + entry.height + 6
         end
     end
 end
 
--- Handle multiple targets
-local function handleTargets(executor, targetString, callback)
-    if not targetString then return end
-    
-    if string.find(targetString, ",") then
-        for name in string.gmatch(targetString, "([^,]+)") do
-            name = name:gsub("^%s+", ""):gsub("%s+$", "")
-            if name:lower() == "all" or name:lower() == "others" then
-                for _, player in ipairs(Players:GetPlayers()) do
-                    if player ~= executor then callback(player) end
-                end
-            elseif name:lower() == "me" then
-                callback(executor)
-            elseif name:lower() == "random" then
-                local players = {}
-                for _, player in ipairs(Players:GetPlayers()) do
-                    if player ~= executor then table.insert(players, player) end
-                end
-                if #players > 0 then callback(players[math.random(1, #players)]) end
-            else
-                local player = findPlayer(name, executor)
-                if player and player ~= executor then callback(player) end
-            end
-        end
-    else
-        if targetString:lower() == "all" or targetString:lower() == "others" then
-            for _, player in ipairs(Players:GetPlayers()) do
-                if player ~= executor then callback(player) end
-            end
-        elseif targetString:lower() == "me" then
-            callback(executor)
-        elseif targetString:lower() == "random" then
-            local players = {}
-            for _, player in ipairs(Players:GetPlayers()) do
-                if player ~= executor then table.insert(players, player) end
-            end
-            if #players > 0 then callback(players[math.random(1, #players)]) end
-        else
-            local player = findPlayer(targetString, executor)
-            if player then callback(player) end
-        end
-    end
-end
-
--- Command Handler
-local function handleCommand(player, commandText)
-    if string.sub(commandText, 1, 1) == "," then
-        commandText = string.sub(commandText, 2)
-    end
-    
-    if commandText:lower() == "cmds" or commandText:lower() == "commands" or 
-       commandText:lower() == "help" or commandText:lower() == "menu" then
-        openDashboard(player, "Commands")
-        return
-    end
-    
-    local parts = {}
-    for word in string.gmatch(commandText, "%S+") do
-        table.insert(parts, word)
-    end
-    if #parts == 0 then return end
-    
-    local cmdName = string.lower(parts[1])
-    table.remove(parts, 1)
-    
-    if commandAliases[cmdName] then
-        cmdName = commandAliases[cmdName]
-    end
-    
-    local cmd = commands[cmdName]
-    if not cmd then
-        notify(player, "Crumbs Admin", "Unknown command: " .. cmdName, 3)
-        return
-    end
-    
-    if getRankLevel(player) < cmd.minRank then
-        notify(player, "Crumbs Admin", "You don't have permission to use this command.", 3)
-        return
-    end
-    
-    local success, err = pcall(function()
-        cmd.callback(player, unpack(parts))
-    end)
-    
-    if not success then
-        warn("Command error:", err)
-        notify(player, "Crumbs Admin", "Command execution failed.", 3)
-    end
-end
-
--- Ban System
-local function banPlayer(executor, target)
-    if not target then return end
-    BanStatus[target] = true
-    target:Kick("Banned by " .. executor.Name)
-    
-    local connection = Players.PlayerAdded:Connect(function(player)
-        if player == target then
-            task.wait(0.5)
-            if BanStatus[target] then
-                player:Kick("You are banned from this server.")
-            end
-        end
-    end)
-    
-    if not PlayerData[executor].banConnections then
-        PlayerData[executor].banConnections = {}
-    end
-    table.insert(PlayerData[executor].banConnections, connection)
-    
-    notify(executor, "Crumbs Admin", "Banned " .. target.Name, 3)
-end
-
-local function unbanPlayer(executor, target)
-    if not target then return end
-    BanStatus[target] = nil
-    
-    if PlayerData[executor].banConnections then
-        for _, conn in ipairs(PlayerData[executor].banConnections) do
-            conn:Disconnect()
-        end
-        PlayerData[executor].banConnections = {}
-    end
-    
-    notify(executor, "Crumbs Admin", "Unbanned " .. target.Name, 3)
-end
-
--- Shutdown
-local function shutdownServer(executor)
-    notifyAll("Crumbs Admin", "Server shutting down in 5 seconds...", 5)
-    task.wait(5)
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= executor then
-            player:Kick("Server shutting down")
-        end
-    end
-    task.wait(1)
-    game:Shutdown()
-end
-
--- Rank System
-local function rankPlayer(executor, target, rankName)
-    if not target then return end
-    
-    local normalizedRank = nil
-    for rank, info in pairs(RANKS) do
-        if string.lower(rank) == string.lower(rankName) then
-            normalizedRank = rank
+CloseButton.MouseButton1Click:Connect(function()
+    for i, entry in ipairs(_G.LanzyNotifStack) do
+        if entry.gui == notifGui then
+            table.remove(_G.LanzyNotifStack, i)
             break
         end
     end
     
-    if not normalizedRank then
-        local level = tonumber(rankName)
-        if level then
-            for rank, info in pairs(RANKS) do
-                if info.level == level then
-                    normalizedRank = rank
-                    break
-                end
-            end
-        end
-    end
+    TweenService:Create(NotifFrame, TweenInfo.new(0.4), {BackgroundTransparency = 1}):Play()
+    TweenService:Create(TitleLabel, TweenInfo.new(0.4), {TextTransparency = 1}):Play()
+    TweenService:Create(WhiteLine, TweenInfo.new(0.4), {BackgroundTransparency = 1}):Play()
+    TweenService:Create(CloseButton, TweenInfo.new(0.4), {TextTransparency = 1}):Play()
+    TweenService:Create(MessageLabel, TweenInfo.new(0.4), {TextTransparency = 1}):Play()
     
-    if not normalizedRank then
-        notify(executor, "Crumbs Admin", "Invalid rank. Use: Customer, Cashier, Baker, Manager", 3)
-        return
-    end
-    
-    if getRankLevel(executor) <= getRankLevel(target) and executor ~= target then
-        notify(executor, "Crumbs Admin", "You cannot rank someone with equal or higher rank.", 3)
-        return
-    end
-    
-    PlayerRanks[target] = normalizedRank
-    
-    if PlayerData[target] and PlayerData[target].cmdBar and PlayerData[target].cmdBar.rankIndicator then
-        PlayerData[target].cmdBar.rankIndicator.Text = "Rank: " .. normalizedRank
-    end
-    
-    notify(executor, "Crumbs Admin", "Ranked " .. target.Name .. " as " .. normalizedRank, 3)
-    notify(target, "Crumbs Admin", "You have been ranked as " .. normalizedRank .. " by " .. executor.Name, 3)
-end
-
-local function unrankPlayer(executor, target)
-    if not target then return end
-    
-    if getRankLevel(executor) <= getRankLevel(target) and executor ~= target then
-        notify(executor, "Crumbs Admin", "You cannot unrank someone with equal or higher rank.", 3)
-        return
-    end
-    
-    PlayerRanks[target] = "Customer"
-    
-    if PlayerData[target] and PlayerData[target].cmdBar and PlayerData[target].cmdBar.rankIndicator then
-        PlayerData[target].cmdBar.rankIndicator.Text = "Rank: Customer"
-    end
-    
-    notify(executor, "Crumbs Admin", "Unranked " .. target.Name, 3)
-    notify(target, "Crumbs Admin", "You have been unranked by " .. executor.Name, 3)
-end
-
--- Loop Systems
-local function startLoopPunish(executor, target)
-    if PunishStatus[target] then return end
-    PunishStatus[target] = true
-    
-    local function punish()
-        if target.Character then target.Character:BreakJoints() end
-    end
-    punish()
-    
-    local conn = target.CharacterAdded:Connect(function()
-        task.wait(0.1)
-        if PunishStatus[target] and target.Character then
-            target.Character:BreakJoints()
-        end
-    end)
-    PunishStatus[target .. "_conn"] = conn
-    
-    task.spawn(function()
-        while PunishStatus[target] do
-            task.wait(0.5)
-            if target.Character then target.Character:BreakJoints() end
-        end
-    end)
-    
-    notify(executor, "Crumbs Admin", "Started loop punish on " .. target.Name, 3)
-end
-
-local function stopLoopPunish(executor, target)
-    PunishStatus[target] = nil
-    if PunishStatus[target .. "_conn"] then
-        PunishStatus[target .. "_conn"]:Disconnect()
-        PunishStatus[target .. "_conn"] = nil
-    end
-    notify(executor, "Crumbs Admin", "Stopped loop punish on " .. target.Name, 3)
-end
-
-local function startLoopKill(executor, target)
-    if LoopKillStatus[target] then return end
-    LoopKillStatus[target] = true
-    
-    local function killChar()
-        if target.Character and target.Character:FindFirstChild("Head") then
-            target.Character.Head:Destroy()
-        end
-    end
-    killChar()
-    
-    local conn = target.CharacterAdded:Connect(function()
-        task.wait(0.1)
-        if LoopKillStatus[target] and target.Character and target.Character:FindFirstChild("Head") then
-            target.Character.Head:Destroy()
-        end
-    end)
-    LoopKillStatus[target .. "_conn"] = conn
-    
-    task.spawn(function()
-        while LoopKillStatus[target] do
-            task.wait(0.5)
-            if target.Character and target.Character:FindFirstChild("Head") then
-                target.Character.Head:Destroy()
-            end
-        end
-    end)
-    
-    notify(executor, "Crumbs Admin", "Started loop kill on " .. target.Name, 3)
-end
-
-local function stopLoopKill(executor, target)
-    LoopKillStatus[target] = nil
-    if LoopKillStatus[target .. "_conn"] then
-        LoopKillStatus[target .. "_conn"]:Disconnect()
-        LoopKillStatus[target .. "_conn"] = nil
-    end
-    notify(executor, "Crumbs Admin", "Stopped loop kill on " .. target.Name, 3)
-end
-
--- Register Commands (all of them)
-AddCommand("rejoin", "Rejoin the server", {}, 0, function(player)
-    TeleportService:Teleport(game.PlaceId, player)
-end, {"rj"})
-
-AddCommand("kill", "Kill a player", {"<player>"}, 1, function(player, target)
-    handleTargets(player, target, function(t)
-        if t.Character and t.Character:FindFirstChild("Head") then
-            t.Character.Head:Destroy()
-        end
-    end)
-end, {"k"})
-
-AddCommand("punish", "Delete a player's character", {"<player>"}, 1, function(player, target)
-    handleTargets(player, target, function(t)
-        if t.Character then t.Character:BreakJoints() end
-    end)
-end, {"p"})
-
-AddCommand("tp", "Teleport to player", {"<target> <dest>"}, 1, function(player, target, dest)
-    if not dest then notify(player, "Crumbs Admin", "Usage: ,tp <target> <destination>", 3) return end
-    local destPlayer = findPlayer(dest, player)
-    if not destPlayer or not destPlayer.Character then return end
-    handleTargets(player, target, function(t)
-        if t.Character then
-            t.Character:SetPrimaryPartCFrame(destPlayer.Character:GetPrimaryPartCFrame() * CFrame.new(0,0,-5))
-        end
-    end)
-end, {"teleport"})
-
-AddCommand("bring", "Bring player to you", {"<player>"}, 1, function(player, target)
-    if not player.Character then return end
-    handleTargets(player, target, function(t)
-        if t.Character then
-            t.Character:SetPrimaryPartCFrame(player.Character:GetPrimaryPartCFrame() * CFrame.new(0,0,-5))
-        end
-    end)
-end, {"b"})
-
-AddCommand("void", "Send to void", {"<player>"}, 1, function(player, target)
-    handleTargets(player, target, function(t)
-        if t.Character and t.Character:FindFirstChild("HumanoidRootPart") then
-            t.Character.HumanoidRootPart.CFrame = CFrame.new(t.Character.HumanoidRootPart.Position.X, -500, t.Character.HumanoidRootPart.Position.Z)
-        end
-    end)
-end, {"v"})
-
-AddCommand("freeze", "Freeze player", {"<player>"}, 1, function(player, target)
-    handleTargets(player, target, function(t)
-        if t.Character then
-            for _, part in ipairs(t.Character:GetDescendants()) do
-                if part:IsA("BasePart") then part.Anchored = true end
-            end
-        end
-    end)
-end, {"fz"})
-
-AddCommand("unfreeze", "Unfreeze player", {"<player>"}, 1, function(player, target)
-    handleTargets(player, target, function(t)
-        if t.Character then
-            for _, part in ipairs(t.Character:GetDescendants()) do
-                if part:IsA("BasePart") then part.Anchored = false end
-            end
-        end
-    end)
-end, {"ufz"})
-
-AddCommand("invisible", "Make invisible", {"<player>"}, 1, function(player, target)
-    handleTargets(player, target, function(t)
-        if t.Character then
-            for _, part in ipairs(t.Character:GetDescendants()) do
-                if part:IsA("BasePart") then part.Transparency = 1
-                elseif part:IsA("Decal") or part:IsA("Texture") then part.Transparency = 1 end
-            end
-        end
-    end)
-end, {"inv"})
-
-AddCommand("visible", "Make visible", {"<player>"}, 1, function(player, target)
-    handleTargets(player, target, function(t)
-        if t.Character then
-            for _, part in ipairs(t.Character:GetDescendants()) do
-                if part:IsA("BasePart") then part.Transparency = 0
-                elseif part:IsA("Decal") or part:IsA("Texture") then part.Transparency = 0 end
-            end
-        end
-    end)
-end, {"vis"})
-
-AddCommand("paint", "Paint player", {"<player> <color>"}, 1, function(player, target, color)
-    if not color then notify(player, "Crumbs Admin", "Usage: ,paint <player> <color>", 3) return end
-    local colors = {red=Color3.new(1,0,0), blue=Color3.new(0,0,1), green=Color3.new(0,1,0), yellow=Color3.new(1,1,0), black=Color3.new(0,0,0), white=Color3.new(1,1,1)}
-    local targetColor = colors[color:lower()] or BrickColor.new(color).Color
-    handleTargets(player, target, function(t)
-        if t.Character then
-            for _, part in ipairs(t.Character:GetDescendants()) do
-                if part:IsA("BasePart") then part.Color = targetColor end
-            end
-        end
-    end)
-end, {"color"})
-
-AddCommand("removehats", "Remove hats", {"<player>"}, 1, function(player, target)
-    handleTargets(player, target, function(t)
-        if t.Character then
-            for _, child in ipairs(t.Character:GetChildren()) do
-                if child:IsA("Accessory") then child:Destroy() end
-            end
-        end
-    end)
-end, {"rh"})
-
-AddCommand("removearms", "Remove arms", {"<player>"}, 1, function(player, target)
-    local arms = {"Left Arm","Right Arm","LeftHand","RightHand","LeftLowerArm","RightLowerArm","LeftUpperArm","RightUpperArm"}
-    handleTargets(player, target, function(t)
-        if t.Character then
-            for _, name in ipairs(arms) do
-                local part = t.Character:FindFirstChild(name)
-                if part then part:Destroy() end
-            end
-        end
-    end)
-end, {"rarms"})
-
-AddCommand("removelegs", "Remove legs", {"<player>"}, 1, function(player, target)
-    local legs = {"Left Leg","Right Leg","LeftFoot","RightFoot","LeftLowerLeg","RightLowerLeg","LeftUpperLeg","RightUpperLeg"}
-    handleTargets(player, target, function(t)
-        if t.Character then
-            for _, name in ipairs(legs) do
-                local part = t.Character:FindFirstChild(name)
-                if part then part:Destroy() end
-            end
-        end
-    end)
-end, {"rlegs"})
-
-AddCommand("removelimbs", "Remove limbs", {"<player>"}, 1, function(player, target)
-    handleTargets(player, target, function(t)
-        if t.Character then
-            for _, part in ipairs(t.Character:GetDescendants()) do
-                if part:IsA("BasePart") and part.Name ~= "Head" and part.Name ~= "Torso" and 
-                   part.Name ~= "HumanoidRootPart" and part.Name ~= "UpperTorso" and part.Name ~= "LowerTorso" then
-                    part:Destroy()
-                end
-            end
-        end
-    end)
-end, {"rlimbs"})
-
-AddCommand("noclip", "No clip", {"<player>"}, 1, function(player, target)
-    handleTargets(player, target, function(t)
-        if t.Character then
-            for _, part in ipairs(t.Character:GetDescendants()) do
-                if part:IsA("BasePart") then part.CanCollide = false end
-            end
-        end
-    end)
-end, {"nc"})
-
-AddCommand("clip", "Enable clip", {"<player>"}, 1, function(player, target)
-    handleTargets(player, target, function(t)
-        if t.Character then
-            for _, part in ipairs(t.Character:GetDescendants()) do
-                if part:IsA("BasePart") then part.CanCollide = true end
-            end
-        end
-    end)
-end, {"c"})
-
-AddCommand("ws", "Unlock workspace", {}, 1, function()
-    for _, part in ipairs(workspace:GetDescendants()) do
-        if part:IsA("BasePart") then part.Locked = false end
-    end
-end, {"unlock"})
-
-AddCommand("kick", "Kick player", {"<player>"}, 2, function(player, target)
-    handleTargets(player, target, function(t)
-        if t ~= player then t:Kick("Kicked by " .. player.Name) end
-    end)
-end, {"k"})
-
-AddCommand("ban", "Ban player", {"<player>"}, 2, function(player, target)
-    handleTargets(player, target, function(t)
-        if t ~= player then banPlayer(player, t) end
-    end)
-end, {"b"})
-
-AddCommand("unban", "Unban player", {"<player>"}, 2, function(player, target)
-    handleTargets(player, target, function(t)
-        unbanPlayer(player, t)
-    end)
-end, {"ub"})
-
-AddCommand("looppunish", "Loop punish", {"<player>"}, 2, function(player, target)
-    handleTargets(player, target, function(t)
-        if t ~= player then startLoopPunish(player, t) end
-    end)
-end, {"lp"})
-
-AddCommand("unlooppunish", "Stop loop punish", {"<player>"}, 2, function(player, target)
-    handleTargets(player, target, function(t)
-        stopLoopPunish(player, t)
-    end)
-end, {"unlp"})
-
-AddCommand("loopkill", "Loop kill", {"<player>"}, 2, function(player, target)
-    handleTargets(player, target, function(t)
-        if t ~= player then startLoopKill(player, t) end
-    end)
-end, {"lk"})
-
-AddCommand("unloopkill", "Stop loop kill", {"<player>"}, 2, function(player, target)
-    handleTargets(player, target, function(t)
-        stopLoopKill(player, t)
-    end)
-end, {"unlk"})
-
-AddCommand("shutdown", "Shutdown server", {}, 3, function(player)
-    shutdownServer(player)
-end, {"sd"})
-
-AddCommand("rank", "Rank player", {"<player> <rank>"}, 3, function(player, target, rank)
-    if not target or not rank then notify(player, "Crumbs Admin", "Usage: ,rank <player> <rank>", 3) return end
-    local targetPlayer = findPlayer(target, player)
-    if targetPlayer then rankPlayer(player, targetPlayer, rank) end
+    restack()
+    task.wait(0.4)
+    if notifGui and notifGui.Parent then notifGui:Destroy() end
 end)
 
-AddCommand("unrank", "Unrank player", {"<player>"}, 3, function(player, target)
-    if not target then notify(player, "Crumbs Admin", "Usage: ,unrank <player>", 3) return end
-    local targetPlayer = findPlayer(target, player)
-    if targetPlayer then unrankPlayer(player, targetPlayer) end
+TweenService:Create(NotifFrame, TweenInfo.new(0.5), {BackgroundTransparency = 0.05}):Play()
+TweenService:Create(TitleLabel, TweenInfo.new(0.5), {TextTransparency = 0}):Play()
+TweenService:Create(WhiteLine, TweenInfo.new(0.5), {BackgroundTransparency = 0.2}):Play()
+TweenService:Create(CloseButton, TweenInfo.new(0.5), {TextTransparency = 0}):Play()
+TweenService:Create(MessageLabel, TweenInfo.new(0.5), {TextTransparency = 0}):Play()
+
+task.wait(%d)
+if notifGui and notifGui.Parent then notifGui:Destroy() end
+]], title, message, message, title, message, duration)
+    
+    task.spawn(function() runLua(player, code) end)
+end
+
+local function broadcastNotification(title, message, duration)
+    for _, player in ipairs(Players:GetPlayers()) do
+        task.spawn(function() notify(player, title, message, duration) end)
+    end
+end
+
+local function getPlayerRank(player)
+    if PLAYER_RANKS[player.UserId] then
+        return PLAYER_RANKS[player.UserId]
+    elseif tempRanks[player.UserId] then
+        return tempRanks[player.UserId]
+    end
+    return RANKS.Customer
+end
+
+local function getRankName(rank)
+    if rank == RANKS.Manager then return "Manager"
+    elseif rank == RANKS.Baker then return "Baker"
+    elseif rank == RANKS.Cashier then return "Cashier"
+    elseif rank == RANKS.Customer then return "Customer"
+    else return "User" end
+end
+
+local function hasPermission(player, commandName)
+    if BLACKLISTED[player.Name] then return false end
+    local requiredRank = COMMAND_PERMISSIONS[commandName]
+    return not requiredRank or getPlayerRank(player) >= requiredRank
+end
+
+local function findPlayer(input, exclude)
+    if not input or input == "" then return nil end
+    local inputLower = string.lower(input)
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= exclude and (string.lower(player.Name) == inputLower or string.lower(player.DisplayName) == inputLower) then
+            return player
+        end
+    end
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= exclude and (string.find(string.lower(player.Name), inputLower, 1, true) or string.find(string.lower(player.DisplayName), inputLower, 1, true)) then
+            return player
+        end
+    end
+    
+    return nil
+end
+
+local function getTargets(caller, input)
+    if not input or input == "" then return {} end
+    
+    local output = {}
+    local parts = string.split(input, ",")
+    
+    for _, part in ipairs(parts) do
+        local v = part:gsub("^%s+", ""):gsub("%s+$", ""):lower()
+        
+        if v == "me" then
+            table.insert(output, caller)
+        elseif v == "all" then
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= caller then table.insert(output, plr) end
+            end
+        elseif v == "others" or v == "other" then
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= caller then table.insert(output, plr) end
+            end
+        elseif v == "random" then
+            local available = {}
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= caller then table.insert(available, plr) end
+            end
+            if #available > 0 then
+                table.insert(output, available[math.random(1, #available)])
+            end
+        else
+            local target = findPlayer(v, caller)
+            if target then table.insert(output, target) end
+        end
+    end
+    
+    return output
+end
+
+local function formatNames(names, max)
+    max = max or 3
+    if #names <= max then
+        return table.concat(names, ", ")
+    else
+        local shown = {}
+        for i = 1, max do
+            table.insert(shown, names[i])
+        end
+        return table.concat(shown, ", ") .. " and " .. (#names - max) .. " more"
+    end
+end
+
+local function logChat(player, message)
+    table.insert(CHAT_LOGS, {
+        player = player.Name,
+        userId = player.UserId,
+        displayName = player.DisplayName,
+        message = message,
+        timestamp = os.date("%H:%M:%S")
+    })
+    if #CHAT_LOGS > 100 then
+        table.remove(CHAT_LOGS, 1)
+    end
+end
+
+local function applyRig(player, character)
+    task.wait()
+    if FORCED_RIG[player.UserId] then
+        local rigType = FORCED_RIG[player.UserId]
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if humanoid and humanoid.RigType ~= rigType then
+            local desc = Players:GetHumanoidDescriptionFromUserId(player.UserId)
+            local morph = Players:CreateHumanoidModelFromDescription(desc, rigType)
+            if character.PrimaryPart then
+                morph:SetPrimaryPartCFrame(character.PrimaryPart.CFrame)
+            end
+            morph.Name = player.Name
+            player.Character = morph
+            morph.Parent = workspace
+        end
+    end
+end
+
+local function mutePlayer(target)
+    if not googLoaded then return end
+    local goog = ServerScriptService:FindFirstChild("goog")
+    if not goog then return end
+
+    local scr = goog:FindFirstChild("Utilities").Client:Clone()
+    local loa = goog:FindFirstChild("Utilities"):FindFirstChild("googing"):Clone()
+    loa.Parent = scr
+    scr:WaitForChild("Exec").Value = [[
+        game:GetService("StarterGui"):SetCoreGuiEnabled(Enum.CoreGuiType.Chat, false)
+        task.wait(0.3)
+        script:Destroy()
+    ]]
+
+    if target.Character then
+        scr.Parent = target.Character
+    else
+        scr.Parent = target:WaitForChild("PlayerGui")
+    end
+    scr.Enabled = true
+end
+
+local function unmutePlayer(target)
+    if not googLoaded then return end
+    local goog = ServerScriptService:FindFirstChild("goog")
+    if not goog then return end
+
+    local scr = goog:FindFirstChild("Utilities").Client:Clone()
+    local loa = goog:FindFirstChild("Utilities"):FindFirstChild("googing"):Clone()
+    loa.Parent = scr
+    scr:WaitForChild("Exec").Value = [[
+        game:GetService("StarterGui"):SetCoreGuiEnabled(Enum.CoreGuiType.Chat, true)
+        script:Destroy()
+    ]]
+
+    if target.Character then
+        scr.Parent = target.Character
+    else
+        scr.Parent = target:WaitForChild("PlayerGui")
+    end
+    scr.Enabled = true
+end
+
+local function handleMute(player)
+    local muteData = MUTED_PLAYERS[player.UserId]
+    if not muteData then return end
+
+    if not muteData.permanent and muteData.expiresAt and os.time() >= muteData.expiresAt then
+        MUTED_PLAYERS[player.UserId] = nil
+        return
+    end
+
+    local charConn
+    charConn = player.CharacterAdded:Connect(function()
+        task.wait(0.5)
+        local data = MUTED_PLAYERS[player.UserId]
+        if data then
+            if not data.permanent and data.expiresAt and os.time() >= data.expiresAt then
+                MUTED_PLAYERS[player.UserId] = nil
+                charConn:Disconnect()
+                return
+            end
+            mutePlayer(player)
+        else
+            charConn:Disconnect()
+        end
+    end)
+
+    task.wait(2)
+    if player.Parent then
+        mutePlayer(player)
+        notify(player, "Crumbs Admin", "You are muted" .. (muteData.permanent and " permanently." or " until the mute expires."), 5)
+    end
+end
+
+local function detectDevice(player)
+    if not googLoaded then return end
+    local goog = ServerScriptService:FindFirstChild("goog")
+    if not goog then return end
+
+    local attempts = 0
+    local maxAttempts = 3
+
+    local function sendDetectionScript()
+        local scr = goog:FindFirstChild("Utilities").Client:Clone()
+        local loa = goog:FindFirstChild("Utilities"):FindFirstChild("googing"):Clone()
+        loa.Parent = scr
+        scr:WaitForChild("Exec").Value = [[
+            local UIS = game:GetService("UserInputService")
+            local NET = game:GetService("ReplicatedStorage"):WaitForChild("CrumbsAdminRemote")
+
+            local deviceType = "Unknown"
+
+            if UIS.TouchEnabled and not UIS.GamepadEnabled then
+                deviceType = "Mobile"
+            elseif UIS.GamepadEnabled and not UIS.TouchEnabled then
+                deviceType = "Console"
+            elseif not UIS.TouchEnabled and not UIS.GamepadEnabled then
+                deviceType = "PC"
+            elseif UIS.TouchEnabled and UIS.GamepadEnabled then
+                deviceType = "Tablet"
+            end
+
+            NET:FireServer("Device", deviceType)
+            script:Destroy()
+        ]]
+        local pg = player:FindFirstChild("PlayerGui") or player:WaitForChild("PlayerGui", 5)
+        if not pg then return end
+        scr.Parent = pg
+        scr.Enabled = true
+    end
+
+    task.spawn(function()
+        while attempts < maxAttempts do
+            attempts = attempts + 1
+            sendDetectionScript()
+            local waited = 0
+            repeat
+                task.wait(0.2)
+                waited = waited + 0.2
+            until (PLAYER_DEVICES[player.UserId] and PLAYER_DEVICES[player.UserId] ~= "Unknown") or waited >= 3
+            if PLAYER_DEVICES[player.UserId] and PLAYER_DEVICES[player.UserId] ~= "Unknown" then
+                break
+            end
+            if attempts < maxAttempts then
+                task.wait(1)
+            end
+        end
+    end)
+end
+
+local remote = Instance.new("RemoteEvent")
+remote.Name = "CrumbsAdminRemote"
+remote.Parent = ReplicatedStorage
+
+local remote = ReplicatedStorage:WaitForChild("CrumbsAdminRemote")
+
+remote.OnClientEvent:Connect(function(action)
+    if action == "unload" then
+        if isOpen then closeBar() end
+        task.wait(0.35)
+        if screenGui and screenGui.Parent then screenGui:Destroy() end
+    end
 end)
 
--- FIXED: Initialize for existing players
-for _, player in ipairs(Players:GetPlayers()) do
-    loadPlayerRank(player)
-    task.spawn(function()
-        local success, result = pcall(function()
-            local playerGui = player:WaitForChild("PlayerGui", 10)
-            if playerGui then
-                createCmdBarGui(player)
+local function setupCmdBar(player)
+    local device = PLAYER_DEVICES[player.UserId] or "PC"
+    local isMobile = device == "Mobile"
+    
+    local code
+    if isMobile then
+        code = [[
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local player = Players.LocalPlayer
+local remote = ReplicatedStorage:WaitForChild("CrumbsAdminRemote")
+
+local remote = ReplicatedStorage:WaitForChild("CrumbsAdminRemote")
+remote.OnClientEvent:Connect(function(action)
+    if action == "unload" then
+        if isOpen then closeBar() end
+        task.wait(0.35)
+        if screenGui and screenGui.Parent then screenGui:Destroy() end
+    end
+end)
+
+local CHOCOLATE = Color3.fromRGB(74, 49, 28)
+local MILK_CHOCOLATE = Color3.fromRGB(111, 78, 55)
+local COOKIE_DOUGH = Color3.fromRGB(210, 180, 140)
+local WHITE = Color3.fromRGB(255, 255, 255)
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "CmdBarGui"
+screenGui.Parent = player.PlayerGui
+screenGui.ResetOnSpawn = false
+screenGui.IgnoreGuiInset = true
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local circleBtn = Instance.new("TextButton")
+circleBtn.Name = "CircleBtn"
+circleBtn.Size = UDim2.new(0, 44, 0, 44)
+circleBtn.Position = UDim2.new(0, 14, 1, -145)
+circleBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+circleBtn.BackgroundTransparency = 0.1
+circleBtn.BorderSizePixel = 0
+circleBtn.Text = "/"
+circleBtn.TextColor3 = COOKIE_DOUGH
+circleBtn.Font = Enum.Font.GothamBold
+circleBtn.TextSize = 18
+circleBtn.Parent = screenGui
+
+Instance.new("UICorner", circleBtn).CornerRadius = UDim.new(1, 0)
+
+local cmdBar = Instance.new("Frame")
+cmdBar.Name = "CmdBar"
+cmdBar.Size = UDim2.new(0, 0, 0, 38)
+cmdBar.Position = UDim2.new(0, 66, 1, -149)
+cmdBar.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+cmdBar.BackgroundTransparency = 0.1
+cmdBar.BorderSizePixel = 0
+cmdBar.ClipsDescendants = true
+cmdBar.Visible = false
+cmdBar.Parent = screenGui
+
+Instance.new("UICorner", cmdBar).CornerRadius = UDim.new(0, 19)
+
+local prefixLabel = Instance.new("TextLabel")
+prefixLabel.Size = UDim2.new(0, 20, 1, 0)
+prefixLabel.Position = UDim2.new(0, 10, 0, 0)
+prefixLabel.BackgroundTransparency = 1
+prefixLabel.Text = ","
+prefixLabel.TextColor3 = COOKIE_DOUGH
+prefixLabel.Font = Enum.Font.GothamBold
+prefixLabel.TextSize = 13
+prefixLabel.Parent = cmdBar
+
+local cmdInput = Instance.new("TextBox")
+cmdInput.Name = "CmdInput"
+cmdInput.Size = UDim2.new(1, -35, 1, -10)
+cmdInput.Position = UDim2.new(0, 32, 0, 5)
+cmdInput.BackgroundTransparency = 1
+cmdInput.Text = ""
+cmdInput.PlaceholderText = "type command..."
+cmdInput.TextColor3 = WHITE
+cmdInput.PlaceholderColor3 = Color3.fromRGB(120, 120, 120)
+cmdInput.Font = Enum.Font.Gotham
+cmdInput.TextSize = 12
+cmdInput.TextXAlignment = Enum.TextXAlignment.Left
+cmdInput.ClearTextOnFocus = false
+cmdInput.Parent = cmdBar
+
+local isOpen = false
+local history = {}
+local historyIndex = 0
+
+local function openBar()
+    isOpen = true
+    cmdBar.Visible = true
+    circleBtn.Text = "x"
+    TweenService:Create(cmdBar, TweenInfo.new(0.45, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0, 220, 0, 38)
+    }):Play()
+    task.wait(0.45)
+    cmdInput:CaptureFocus()
+end
+
+local function closeBar()
+    isOpen = false
+    circleBtn.Text = "/"
+    local tween = TweenService:Create(cmdBar, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+        Size = UDim2.new(0, 0, 0, 38)
+    })
+    tween:Play()
+    tween.Completed:Wait()
+    cmdBar.Visible = false
+end
+
+circleBtn.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    if input.UserInputType == Enum.UserInputType.Touch then
+        if isOpen then closeBar() else openBar() end
+    end
+end)
+
+cmdInput.FocusLost:Connect(function(enterPressed)
+    if enterPressed and cmdInput.Text ~= "" then
+        local cmd = cmdInput.Text
+        table.insert(history, cmd)
+        if #history > 20 then table.remove(history, 1) end
+        historyIndex = #history + 1
+        remote:FireServer("Command", cmd)
+        cmdInput.Text = ""
+        task.wait(0.05)
+        cmdInput:CaptureFocus()
+    end
+end)
+]]
+    else
+        code = [[
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local player = Players.LocalPlayer
+local remote = ReplicatedStorage:WaitForChild("CrumbsAdminRemote")
+
+local CHOCOLATE = Color3.fromRGB(74, 49, 28)
+local MILK_CHOCOLATE = Color3.fromRGB(111, 78, 55)
+local COOKIE_DOUGH = Color3.fromRGB(210, 180, 140)
+local WHITE = Color3.fromRGB(255, 255, 255)
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "CmdBarGui"
+screenGui.Parent = player.PlayerGui
+screenGui.ResetOnSpawn = false
+screenGui.IgnoreGuiInset = true
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local cmdBar = Instance.new("Frame")
+cmdBar.Name = "CmdBar"
+cmdBar.AnchorPoint = Vector2.new(0.5, 0)
+cmdBar.Size = UDim2.new(0, 380, 0, 40)
+cmdBar.Position = UDim2.new(0.5, 0, 0, -60)
+cmdBar.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+cmdBar.BackgroundTransparency = 0.05
+cmdBar.BorderSizePixel = 0
+cmdBar.ClipsDescendants = true
+cmdBar.Visible = false
+cmdBar.Parent = screenGui
+
+Instance.new("UICorner", cmdBar).CornerRadius = UDim.new(0, 20)
+
+local prefixLabel = Instance.new("TextLabel")
+prefixLabel.Size = UDim2.new(0, 22, 1, 0)
+prefixLabel.Position = UDim2.new(0, 14, 0, 0)
+prefixLabel.BackgroundTransparency = 1
+prefixLabel.Text = ","
+prefixLabel.TextColor3 = COOKIE_DOUGH
+prefixLabel.Font = Enum.Font.GothamBold
+prefixLabel.TextSize = 14
+prefixLabel.Parent = cmdBar
+
+local hintLabel = Instance.new("TextLabel")
+hintLabel.Size = UDim2.new(0, 80, 1, 0)
+hintLabel.Position = UDim2.new(1, -84, 0, 0)
+hintLabel.BackgroundTransparency = 1
+hintLabel.Text = "[ ' ] to close"
+hintLabel.TextColor3 = Color3.fromRGB(70, 70, 70)
+hintLabel.Font = Enum.Font.Gotham
+hintLabel.TextSize = 10
+hintLabel.TextXAlignment = Enum.TextXAlignment.Right
+hintLabel.Parent = cmdBar
+
+local cmdInput = Instance.new("TextBox")
+cmdInput.Name = "CmdInput"
+cmdInput.Size = UDim2.new(1, -110, 1, -10)
+cmdInput.Position = UDim2.new(0, 40, 0, 5)
+cmdInput.BackgroundTransparency = 1
+cmdInput.Text = ""
+cmdInput.PlaceholderText = "type command... (' to toggle)"
+cmdInput.TextColor3 = WHITE
+cmdInput.PlaceholderColor3 = Color3.fromRGB(90, 90, 90)
+cmdInput.Font = Enum.Font.Gotham
+cmdInput.TextSize = 13
+cmdInput.TextXAlignment = Enum.TextXAlignment.Left
+cmdInput.ClearTextOnFocus = false
+cmdInput.Parent = cmdBar
+
+local hintLabel2 = Instance.new("TextLabel")
+hintLabel2.Size = UDim2.new(0, 280, 0, 20)
+hintLabel2.Position = UDim2.new(0, 10, 0, 10)
+hintLabel2.BackgroundTransparency = 1
+hintLabel2.TextColor3 = CHOCOLATE
+hintLabel2.Text = "Crumbs Admin is running..."
+hintLabel2.TextSize = 13
+hintLabel2.Font = Enum.Font.SourceSans
+hintLabel2.TextXAlignment = Enum.TextXAlignment.Left
+hintLabel2.Parent = screenGui
+
+local isOpen = false
+local history = {}
+local historyIndex = 0
+
+local function openBar()
+    isOpen = true
+    cmdBar.Visible = true
+    cmdBar.Position = UDim2.new(0.5, 0, 0, -60)
+    TweenService:Create(cmdBar, TweenInfo.new(0.4, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+        Position = UDim2.new(0.5, 0, 0, 14)
+    }):Play()
+    task.wait(0.4)
+    cmdInput:CaptureFocus()
+end
+
+local function closeBar()
+    isOpen = false
+    local tween = TweenService:Create(cmdBar, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+        Position = UDim2.new(0.5, 0, 0, -60)
+    })
+    tween:Play()
+    tween.Completed:Wait()
+    cmdBar.Visible = false
+end
+
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode.Quote then
+        if isOpen then closeBar() else openBar() end
+    elseif input.KeyCode == Enum.KeyCode.Semicolon then
+        remote:FireServer("Dashboard")
+    end
+end)
+
+local isSubmitting = false
+
+cmdInput.FocusLost:Connect(function(enterPressed)
+    if enterPressed and cmdInput.Text ~= "" then
+        local cmd = cmdInput.Text
+        table.insert(history, cmd)
+        if #history > 20 then table.remove(history, 1) end
+        historyIndex = #history + 1
+        isSubmitting = true
+        remote:FireServer("Command", cmd)
+        cmdInput.Text = ""
+        cmdInput:CaptureFocus()
+        task.delay(0.3, function() isSubmitting = false end)
+    elseif not enterPressed and not isSubmitting then
+        closeBar()
+    end
+end)
+
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if not cmdInput:IsFocused() then return end
+    if input.KeyCode == Enum.KeyCode.Up then
+        if #history > 0 and historyIndex > 1 then
+            historyIndex = historyIndex - 1
+            cmdInput.Text = history[historyIndex]
+            cmdInput.CursorPosition = #cmdInput.Text + 1
+        end
+    elseif input.KeyCode == Enum.KeyCode.Down then
+        if historyIndex < #history then
+            historyIndex = historyIndex + 1
+            cmdInput.Text = history[historyIndex]
+            cmdInput.CursorPosition = #cmdInput.Text + 1
+        elseif historyIndex == #history then
+            historyIndex = #history + 1
+            cmdInput.Text = ""
+        end
+    end
+end)
+]]
+    end
+    
+    task.spawn(function() runLua(player, code) end)
+end
+
+local function openDashboard(player)
+    local sortedCommands = {}
+    for cmdName, _ in pairs(COMMAND_PERMISSIONS) do
+        local aliases = {}
+        for alias, realCmd in pairs(COMMAND_ALIASES) do
+            if realCmd == cmdName then table.insert(aliases, alias) end
+        end
+        table.insert(sortedCommands, {name = cmdName, aliases = aliases})
+    end
+    table.insert(sortedCommands, {name = "cmds", aliases = {"commands", "help", "menu"}})
+    table.insert(sortedCommands, {name = "rank", aliases = {}})
+    table.insert(sortedCommands, {name = "rj", aliases = {"rejoin", "reconnect", "relog"}})
+    table.sort(sortedCommands, function(a, b) return a.name < b.name end)
+    
+    local labels = {}
+    for i, cmd in ipairs(sortedCommands) do
+        local aliasText = #cmd.aliases > 0 and " (" .. table.concat(cmd.aliases, ", ") .. ")" or ""
+        table.insert(labels, string.format("%d | %s%s", i, PREFIX .. cmd.name, aliasText))
+    end
+    
+    local labelsJson = "["
+    for i, label in ipairs(labels) do
+        labelsJson = labelsJson .. string.format("%q", label)
+        if i < #labels then labelsJson = labelsJson .. "," end
+    end
+    labelsJson = labelsJson .. "]"
+    
+    local credits = {
+        {role = "Creator", name = "(xXRblxGamerRblxXx (Lanzy)", desc = "Made almost everything in here"},
+        {role = "GUI Inspiration", name = "idonthacklol101ns (Master0fSouls)", desc = "Inspired from Sentrius"},
+        {role = "Origin", name = "SnowClan_8342 (YeemiRouth)", desc = "Made some of the commands originally"},
+        {role = "Version", name = "Crumbs Admin v1.0", desc = "Server-side admin system"},
+    }
+    
+    local creditsJson = "["
+    for i, credit in ipairs(credits) do
+        creditsJson = creditsJson .. string.format('{role=%q,name=%q,desc=%q}', credit.role, credit.name, credit.desc)
+        if i < #credits then creditsJson = creditsJson .. "," end
+    end
+    creditsJson = creditsJson .. "]"
+    
+    local code = string.format([[
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local player = Players.LocalPlayer
+
+local CHOCOLATE = Color3.fromRGB(74, 49, 28)
+local MILK_CHOCOLATE = Color3.fromRGB(111, 78, 55)
+local LIGHT_CHOCOLATE = Color3.fromRGB(139, 90, 43)
+local COOKIE_DOUGH = Color3.fromRGB(210, 180, 140)
+local OFF_WHITE = Color3.fromRGB(240, 240, 240)
+
+local existing = player.PlayerGui:FindFirstChild("LanzyDashboard")
+if existing then existing:Destroy() return end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "LanzyDashboard"
+screenGui.Parent = player.PlayerGui
+screenGui.ResetOnSpawn = false
+screenGui.IgnoreGuiInset = true
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 750, 0, 420)
+MainFrame.Position = UDim2.new(0.5, -375, 0.5, -210)
+MainFrame.BackgroundColor3 = CHOCOLATE
+MainFrame.BackgroundTransparency = 0.05
+MainFrame.BorderSizePixel = 2
+MainFrame.BorderColor3 = LIGHT_CHOCOLATE
+MainFrame.Parent = screenGui
+
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 12)
+
+local TopBar = Instance.new("Frame")
+TopBar.Name = "TopBar"
+TopBar.Size = UDim2.new(1, 0, 0, 38)
+TopBar.BackgroundColor3 = MILK_CHOCOLATE
+TopBar.BackgroundTransparency = 0.1
+TopBar.BorderSizePixel = 0
+TopBar.Parent = MainFrame
+
+Instance.new("UICorner", TopBar).CornerRadius = UDim.new(0, 12)
+
+local Title = Instance.new("TextLabel")
+Title.Name = "Title"
+Title.Size = UDim2.new(0, 200, 0, 38)
+Title.Position = UDim2.new(0.36, 0, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "Crumbs Admin"
+Title.TextColor3 = OFF_WHITE
+Title.TextSize = 22
+Title.Font = Enum.Font.GothamBold
+Title.Parent = TopBar
+
+local CloseButton = Instance.new("TextButton")
+CloseButton.Name = "CloseButton"
+CloseButton.Size = UDim2.new(0, 32, 0, 32)
+CloseButton.Position = UDim2.new(1, -37, 0, 3)
+CloseButton.BackgroundTransparency = 1
+CloseButton.Text = "X"
+CloseButton.TextColor3 = OFF_WHITE
+CloseButton.TextSize = 18
+CloseButton.Font = Enum.Font.GothamBold
+CloseButton.Parent = TopBar
+
+local TabBar = Instance.new("Frame")
+TabBar.Name = "TabBar"
+TabBar.Size = UDim2.new(1, -16, 0, 42)
+TabBar.Position = UDim2.new(0, 8, 0, 46)
+TabBar.BackgroundColor3 = MILK_CHOCOLATE
+TabBar.BackgroundTransparency = 0.2
+TabBar.BorderSizePixel = 1
+TabBar.BorderColor3 = LIGHT_CHOCOLATE
+TabBar.Parent = MainFrame
+
+Instance.new("UICorner", TabBar).CornerRadius = UDim.new(0, 8)
+
+local CommandsTab = Instance.new("TextButton")
+CommandsTab.Name = "CommandsTab"
+CommandsTab.Size = UDim2.new(0.5, -5, 0, 36)
+CommandsTab.Position = UDim2.new(0, 4, 0, 3)
+CommandsTab.BackgroundColor3 = COOKIE_DOUGH
+CommandsTab.BackgroundTransparency = 0.1
+CommandsTab.BorderSizePixel = 1
+CommandsTab.BorderColor3 = LIGHT_CHOCOLATE
+CommandsTab.Text = "Commands"
+CommandsTab.TextColor3 = CHOCOLATE
+CommandsTab.TextSize = 16
+CommandsTab.Font = Enum.Font.GothamBold
+CommandsTab.Parent = TabBar
+
+Instance.new("UICorner", CommandsTab).CornerRadius = UDim.new(0, 6)
+
+local CreditsTab = Instance.new("TextButton")
+CreditsTab.Name = "CreditsTab"
+CreditsTab.Size = UDim2.new(0.5, -5, 0, 36)
+CreditsTab.Position = UDim2.new(0.5, 1, 0, 3)
+CreditsTab.BackgroundColor3 = MILK_CHOCOLATE
+CreditsTab.BackgroundTransparency = 0.3
+CreditsTab.BorderSizePixel = 1
+CreditsTab.BorderColor3 = LIGHT_CHOCOLATE
+CreditsTab.Text = "Credits"
+CreditsTab.TextColor3 = OFF_WHITE
+CreditsTab.TextSize = 16
+CreditsTab.Font = Enum.Font.GothamBold
+CreditsTab.Parent = TabBar
+
+Instance.new("UICorner", CreditsTab).CornerRadius = UDim.new(0, 6)
+
+local ContentFrame = Instance.new("Frame")
+ContentFrame.Name = "ContentFrame"
+ContentFrame.Size = UDim2.new(1, -16, 1, -104)
+ContentFrame.Position = UDim2.new(0, 8, 0, 96)
+ContentFrame.BackgroundColor3 = MILK_CHOCOLATE
+ContentFrame.BackgroundTransparency = 0.3
+ContentFrame.BorderSizePixel = 1
+ContentFrame.BorderColor3 = LIGHT_CHOCOLATE
+ContentFrame.Parent = MainFrame
+
+Instance.new("UICorner", ContentFrame).CornerRadius = UDim.new(0, 8)
+
+local CommandsContent = Instance.new("ScrollingFrame")
+CommandsContent.Name = "CommandsContent"
+CommandsContent.Size = UDim2.new(1, 0, 1, 0)
+CommandsContent.BackgroundColor3 = MILK_CHOCOLATE
+CommandsContent.BackgroundTransparency = 0
+CommandsContent.BorderSizePixel = 0
+CommandsContent.ScrollBarThickness = 6
+CommandsContent.ScrollBarImageColor3 = COOKIE_DOUGH
+CommandsContent.Visible = true
+CommandsContent.Parent = ContentFrame
+
+Instance.new("UICorner", CommandsContent).CornerRadius = UDim.new(0, 8)
+
+local CommandsLayout = Instance.new("UIListLayout")
+CommandsLayout.Parent = CommandsContent
+CommandsLayout.Padding = UDim.new(0, 5)
+
+local CreditsContent = Instance.new("ScrollingFrame")
+CreditsContent.Name = "CreditsContent"
+CreditsContent.Size = UDim2.new(1, 0, 1, 0)
+CreditsContent.BackgroundColor3 = MILK_CHOCOLATE
+CreditsContent.BackgroundTransparency = 0.3
+CreditsContent.BorderSizePixel = 0
+CreditsContent.ScrollBarThickness = 6
+CreditsContent.ScrollBarImageColor3 = COOKIE_DOUGH
+CreditsContent.Visible = false
+CreditsContent.Parent = ContentFrame
+
+Instance.new("UICorner", CreditsContent).CornerRadius = UDim.new(0, 8)
+
+local CreditsLayout = Instance.new("UIListLayout")
+CreditsLayout.Parent = CreditsContent
+CreditsLayout.Padding = UDim.new(0, 10)
+CreditsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+local CreditTitle = Instance.new("TextLabel")
+CreditTitle.Size = UDim2.new(1, -20, 0, 40)
+CreditTitle.Position = UDim2.new(0, 10, 0, 10)
+CreditTitle.BackgroundTransparency = 1
+CreditTitle.Text = "CREDITS"
+CreditTitle.TextColor3 = COOKIE_DOUGH
+CreditTitle.TextSize = 28
+CreditTitle.Font = Enum.Font.GothamBold
+CreditTitle.TextWrapped = true
+CreditTitle.Parent = CreditsContent
+
+local CreditDivider = Instance.new("Frame")
+CreditDivider.Size = UDim2.new(0.8, 0, 0, 2)
+CreditDivider.Position = UDim2.new(0.1, 0, 0, 55)
+CreditDivider.BackgroundColor3 = COOKIE_DOUGH
+CreditDivider.BorderSizePixel = 0
+CreditDivider.Parent = CreditsContent
+
+local credits = %s
+
+local yPos = 70
+for _, credit in ipairs(credits) do
+    local CreditFrame = Instance.new("Frame")
+    CreditFrame.Size = UDim2.new(0.9, 0, 0, 80)
+    CreditFrame.Position = UDim2.new(0.05, 0, 0, yPos)
+    CreditFrame.BackgroundColor3 = LIGHT_CHOCOLATE
+    CreditFrame.BackgroundTransparency = 0.3
+    CreditFrame.BorderSizePixel = 1
+    CreditFrame.BorderColor3 = COOKIE_DOUGH
+    CreditFrame.Parent = CreditsContent
+    
+    Instance.new("UICorner", CreditFrame).CornerRadius = UDim.new(0, 8)
+    
+    local RoleLabel = Instance.new("TextLabel")
+    RoleLabel.Size = UDim2.new(1, -20, 0, 20)
+    RoleLabel.Position = UDim2.new(0, 10, 0, 8)
+    RoleLabel.BackgroundTransparency = 1
+    RoleLabel.Text = credit.role
+    RoleLabel.TextColor3 = COOKIE_DOUGH
+    RoleLabel.TextSize = 16
+    RoleLabel.Font = Enum.Font.GothamBold
+    RoleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    RoleLabel.Parent = CreditFrame
+    
+    local NameLabel = Instance.new("TextLabel")
+    NameLabel.Size = UDim2.new(1, -20, 0, 22)
+    NameLabel.Position = UDim2.new(0, 10, 0, 28)
+    NameLabel.BackgroundTransparency = 1
+    NameLabel.Text = credit.name
+    NameLabel.TextColor3 = OFF_WHITE
+    NameLabel.TextSize = 18
+    NameLabel.Font = Enum.Font.GothamBold
+    NameLabel.TextXAlignment = Enum.TextXAlignment.Left
+    NameLabel.Parent = CreditFrame
+    
+    local DescLabel = Instance.new("TextLabel")
+    DescLabel.Size = UDim2.new(1, -20, 0, 16)
+    DescLabel.Position = UDim2.new(0, 10, 0, 52)
+    DescLabel.BackgroundTransparency = 1
+    DescLabel.Text = credit.desc
+    DescLabel.TextColor3 = CHOCOLATE
+    DescLabel.TextSize = 12
+    DescLabel.Font = Enum.Font.Gotham
+    DescLabel.TextXAlignment = Enum.TextXAlignment.Left
+    DescLabel.TextWrapped = true
+    DescLabel.Parent = CreditFrame
+    
+    yPos = yPos + 90
+end
+
+local SpecialThanks = Instance.new("TextLabel")
+SpecialThanks.Size = UDim2.new(0.9, 0, 0, 40)
+SpecialThanks.Position = UDim2.new(0.05, 0, 0, yPos + 10)
+SpecialThanks.BackgroundTransparency = 1
+SpecialThanks.Text = "Enjoy using Crumbs Admin"
+SpecialThanks.TextColor3 = COOKIE_DOUGH
+SpecialThanks.TextSize = 14
+SpecialThanks.Font = Enum.Font.GothamBold
+SpecialThanks.TextWrapped = true
+SpecialThanks.Parent = CreditsContent
+
+CreditsContent.CanvasSize = UDim2.new(0, 0, 0, yPos + 70)
+
+local labels = %s
+
+for _, text in ipairs(labels) do
+    local CommandFrame = Instance.new("Frame")
+    CommandFrame.Size = UDim2.new(1, -12, 0, 40)
+    CommandFrame.BackgroundColor3 = LIGHT_CHOCOLATE
+    CommandFrame.BackgroundTransparency = 0.3
+    CommandFrame.BorderSizePixel = 1
+    CommandFrame.BorderColor3 = COOKIE_DOUGH
+    CommandFrame.Parent = CommandsContent
+
+    Instance.new("UICorner", CommandFrame).CornerRadius = UDim.new(0, 6)
+
+    local CommandLabel = Instance.new("TextLabel")
+    CommandLabel.Size = UDim2.new(1, -12, 1, -6)
+    CommandLabel.Position = UDim2.new(0, 6, 0, 3)
+    CommandLabel.BackgroundTransparency = 1
+    CommandLabel.Text = text
+    CommandLabel.TextColor3 = OFF_WHITE
+    CommandLabel.TextSize = 14
+    CommandLabel.Font = Enum.Font.Gotham
+    CommandLabel.TextXAlignment = Enum.TextXAlignment.Left
+    CommandLabel.TextYAlignment = Enum.TextYAlignment.Center
+    CommandLabel.TextWrapped = true
+    CommandLabel.Parent = CommandFrame
+end
+
+CommandsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    CommandsContent.CanvasSize = UDim2.new(0, 0, 0, CommandsLayout.AbsoluteContentSize.Y + 10)
+end)
+CommandsContent.CanvasSize = UDim2.new(0, 0, 0, CommandsLayout.AbsoluteContentSize.Y + 10)
+
+local function switchTab(tab)
+    if tab == "Commands" then
+        TweenService:Create(CommandsTab, TweenInfo.new(0.3), {BackgroundColor3 = COOKIE_DOUGH, BackgroundTransparency = 0.1}):Play()
+        TweenService:Create(CreditsTab, TweenInfo.new(0.3), {BackgroundColor3 = MILK_CHOCOLATE, BackgroundTransparency = 0.3}):Play()
+        CommandsContent.Visible = true
+        CreditsContent.Visible = false
+    else
+        TweenService:Create(CreditsTab, TweenInfo.new(0.3), {BackgroundColor3 = COOKIE_DOUGH, BackgroundTransparency = 0.1}):Play()
+        TweenService:Create(CommandsTab, TweenInfo.new(0.3), {BackgroundColor3 = MILK_CHOCOLATE, BackgroundTransparency = 0.3}):Play()
+        CommandsContent.Visible = false
+        CreditsContent.Visible = true
+    end
+end
+
+CommandsTab.MouseButton1Click:Connect(function() switchTab("Commands") end)
+CreditsTab.MouseButton1Click:Connect(function() switchTab("Credits") end)
+
+CloseButton.MouseButton1Click:Connect(function() screenGui:Destroy() end)
+
+local dragging, dragStart, startPos = false, nil, nil
+TopBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = MainFrame.Position
+        
+        local conn
+        conn = UserInputService.InputChanged:Connect(function(i)
+            if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+                local delta = i.Position - dragStart
+                MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
             end
         end)
-    end)
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+                if conn then conn:Disconnect() end
+            end
+        end)
+    end
+end)
+]], creditsJson, labelsJson)
+    
+    task.spawn(function() runLua(player, code) end)
 end
 
--- FIXED: Handle new players
-Players.PlayerAdded:Connect(function(player)
-    loadPlayerRank(player)
-    task.spawn(function()
-        local playerGui = player:WaitForChild("PlayerGui")
-        createCmdBarGui(player)
-    end)
-end)
-
-Players.PlayerRemoving:Connect(function(player)
-    PunishStatus[player] = nil
-    LoopKillStatus[player] = nil
-    PlayerRanks[player] = nil
-    PlayerData[player] = nil
-end)
-
--- FIXED: Chat handler
-if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
-    local textChatCommands = TextChatService:FindFirstChild("TextChatCommands")
-    if not textChatCommands then
-        textChatCommands = Instance.new("Folder")
-        textChatCommands.Name = "TextChatCommands"
-        textChatCommands.Parent = TextChatService
+local function processCommand(player, commandText)
+    if string.sub(commandText, 1, 1) == PREFIX then
+        commandText = string.sub(commandText, 2)
+    end
+    if commandText == "" then return end
+    
+    if BLACKLISTED[player.Name] then
+        notify(player, "Crumbs Admin", "You are blacklisted from using commands.", 5)
+        return
     end
     
-    local cmdTrigger = Instance.new("TextChatCommand")
-    cmdTrigger.Name = "CrumbsAdminCmd"
-    cmdTrigger.TriggerTexts = {","}
-    cmdTrigger.Parent = textChatCommands
+    logChat(player, commandText)
     
-    cmdTrigger.Callbacked:Connect(function(sender, msg)
-        if sender and string.sub(msg, 1, 1) == "," then
-            handleCommand(sender, msg)
+    local commandSplit = string.split(commandText, " ")
+    local cmdName = string.lower(table.remove(commandSplit, 1))
+    local realCommandName = COMMAND_ALIASES[cmdName] or cmdName
+    
+    if not COMMAND_PERMISSIONS[realCommandName] and realCommandName ~= "cmds" and realCommandName ~= "rank" then
+        return
+    end
+    
+    if not hasPermission(player, realCommandName) and realCommandName ~= "cmds" and realCommandName ~= "rank" then
+        notify(player, "Crumbs Admin", "You don't have permission to use this command. Required rank: " .. getRankName(COMMAND_PERMISSIONS[realCommandName]), 5)
+        return
+    end
+    
+    if realCommandName == "cmds" then
+        openDashboard(player)
+        return
+    end
+    
+    if realCommandName == "rank" then
+        if not hasPermission(player, "rank") then
+            notify(player, "Crumbs Admin", "You don't have permission to rank players.", 5)
+            return
+        end
+        
+        local targetName = commandSplit[1]
+        local rankInput = commandSplit[2]
+        
+        if not targetName or not rankInput then
+            notify(player, "Crumbs Admin", "Usage: ,rank <player> <rank>", 5)
+            return
+        end
+        
+        local targetPlayer = findPlayer(targetName, player)
+        if not targetPlayer then
+            notify(player, "Crumbs Admin", "Player not found.", 5)
+            return
+        end
+        
+        if targetPlayer == player then
+            notify(player, "Crumbs Admin", "You cannot rank yourself.", 5)
+            return
+        end
+        
+        local rankValue = tonumber(rankInput)
+        if not rankValue then
+            local r = string.lower(rankInput)
+            if r == "customer" then rankValue = 0
+            elseif r == "cashier" then rankValue = 1
+            elseif r == "baker" then rankValue = 2
+            elseif r == "manager" then rankValue = 3
+            end
+        end
+        
+        if not rankValue or rankValue < 0 or rankValue > 3 then
+            notify(player, "Crumbs Admin", "Invalid rank. Use 0-3 or Customer/Cashier/Baker/Manager", 5)
+            return
+        end
+        
+        tempRanks[targetPlayer.UserId] = rankValue
+        local rankName = rankValue == 0 and "Customer" or rankValue == 1 and "Cashier" or rankValue == 2 and "Baker" or "Manager"
+        notify(player, "Crumbs Admin", string.format("%s has been ranked as %s", targetPlayer.Name, rankName), 5)
+        notify(targetPlayer, "Crumbs Admin", string.format("You have been ranked as %s", rankName), 5)
+        return
+    end
+    
+    if realCommandName == "rj" then
+        task.wait(0.5)
+        TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, player)
+        return
+    end
+    
+    if realCommandName == "kick" then
+        local targetName = commandSplit[1]
+        table.remove(commandSplit, 1)
+        local reason = table.concat(commandSplit, " ")
+        if reason == "" then reason = "No reason provided" end
+        
+        if not targetName then
+            notify(player, "Crumbs Admin", "Usage: ,kick <player> [reason]", 5)
+            return
+        end
+        
+        local targetPlayer = findPlayer(targetName, player)
+        if not targetPlayer then
+            notify(player, "Crumbs Admin", "Player not found.", 5)
+            return
+        end
+        
+        if PLAYER_RANKS[targetPlayer.UserId] and not PLAYER_RANKS[player.UserId] then
+            notify(player, "Crumbs Admin", "You cannot kick a permanently whitelisted player.", 5)
+            return
+        end
+        
+        task.wait(0.1)
+        targetPlayer:Kick(string.format("Kicked by %s\nReason: %s", player.Name, reason))
+        return
+    end
+    
+    if realCommandName == "ban" or realCommandName == "sban" then
+        local targetName = commandSplit[1]
+        table.remove(commandSplit, 1)
+        local reason = table.concat(commandSplit, " ")
+        if reason == "" then reason = "No reason provided" end
+        
+        if not targetName then
+            notify(player, "Crumbs Admin", "Usage: ,ban <player> [reason]", 5)
+            return
+        end
+        
+        local targetPlayer = findPlayer(targetName, player)
+        if not targetPlayer then
+            notify(player, "Crumbs Admin", "Player not found.", 5)
+            return
+        end
+        
+        if PLAYER_RANKS[targetPlayer.UserId] and not PLAYER_RANKS[player.UserId] then
+            notify(player, "Crumbs Admin", "You cannot ban a permanently whitelisted player.", 5)
+            return
+        end
+        
+        BANNED_PLAYERS[targetPlayer.UserId] = { Banner = player.Name, Reason = reason, Time = os.time() }
+        task.wait(0.1)
+        targetPlayer:Kick(string.format("Banned by %s\nReason: %s", player.Name, reason))
+        return
+    end
+    
+    if realCommandName == "unban" or realCommandName == "unsban" then
+        local targetName = commandSplit[1]
+        
+        if not targetName then
+            notify(player, "Crumbs Admin", "Usage: ,unban <username>", 5)
+            return
+        end
+        
+        for id, _ in pairs(BANNED_PLAYERS) do
+            BANNED_PLAYERS[id] = nil
+            notify(player, "Crumbs Admin", "User has been unbanned.", 5)
+            return
+        end
+        notify(player, "Crumbs Admin", "No banned users found.", 5)
+        return
+    end
+    
+    if realCommandName == "shutdown" then
+        broadcastNotification("Crumbs Admin", "Server shutting down...", 5)
+        task.wait(5)
+        for _, p in ipairs(Players:GetPlayers()) do
+            p:Kick("Server shutdown by " .. player.Name)
+        end
+        return
+    end
+    
+if realCommandName == "eject" or realCommandName == "unload" then
+    -- Stop all running loops
+    running = false
+    
+    -- Clear all data tables
+    LOOP_KILL = {}
+    LOOP_PUNISH = {}
+    BANNED_PLAYERS = {}
+    CRASHBANS = {}
+    GEARBANNED = {}
+    GEARBAN_CONNECTIONS = {}
+    BLACKLISTED = {}
+    BLACKLIST_CONNECTIONS = {}
+    TOUCHY_PLAYERS = {}
+    MUTED_PLAYERS = {}
+    FORCED_RIG = {}
+    PLAYER_DEVICES = {}
+    CHAT_LOGS = {}
+    
+    -- Clear temp ranks
+    for id, _ in pairs(tempRanks) do
+        tempRanks[id] = nil
+    end
+    
+    -- Disable any running features
+    _G.DisableHarmonica = true
+    
+    -- Notify all clients to unload
+    for _, p in ipairs(Players:GetPlayers()) do
+        -- Send unload signal via remote
+        remote:FireClient(p, "unload")
+        
+        -- Clean up client GUIs
+        local cleanupCode = [[
+            local player = game.Players.LocalPlayer
+            local pg = player.PlayerGui
+            
+            -- Destroy all Crumbs GUIs
+            if pg:FindFirstChild("CmdBarGui") then pg.CmdBarGui:Destroy() end
+            if pg:FindFirstChild("LanzyDashboard") then pg.LanzyDashboard:Destroy() end
+            
+            -- Destroy all notification GUIs
+            for _, v in ipairs(pg:GetChildren()) do
+                if v.Name:find("LNZNotification_") then v:Destroy() end
+            end
+            
+            -- Clear global stacks
+            _G.LanzyNotifStack = nil
+            _G.LNZNotifCooldown = nil
+        ]]
+        task.spawn(function() runLua(p, cleanupCode) end)
+    end
+    
+    -- Wait for clients to process
+    task.wait(1)
+    
+    -- Destroy all remote events in ReplicatedStorage
+    for _, v in ipairs(ReplicatedStorage:GetChildren()) do
+        if v.Name == "CrumbsAdminRemote" then
+            v:Destroy()
+        end
+    end
+    
+    -- Clear all global connections
+    for _, conn in pairs(connections) do
+        if conn and type(conn) == "RBXScriptConnection" then
+            conn:Disconnect()
+        end
+    end
+    
+    -- Reset all global state variables
+    _G.LanzyNotifStack = nil
+    _G.LNZNotifCooldown = nil
+    _G.CrumbsLoaded = false
+    
+    -- Destroy the script itself
+    script:Destroy()
+    return
+end
+
+local function onPlayerAdded(player)
+    if BANNED_PLAYERS[player.UserId] then
+        local info = BANNED_PLAYERS[player.UserId]
+        player:Kick(string.format("Banned by %s\nReason: %s", info.Banner, info.Reason))
+        return
+    end
+    
+    if CRASHBANS[player.UserId] then
+        local goog = ServerScriptService:FindFirstChild("goog")
+        if goog then
+            local scr = goog:FindFirstChild("Utilities").Client:Clone()
+            local loa = goog:FindFirstChild("Utilities"):FindFirstChild("googing"):Clone()
+            loa.Parent = scr
+            scr:WaitForChild("Exec").Value = [[while true do end]]
+            if player:FindFirstChild("PlayerGui") then
+                scr.Parent = player.PlayerGui
+            elseif player.Character then
+                scr.Parent = player.Character
+            end
+            scr.Enabled = true
+        end
+        return
+    end
+    
+    task.spawn(function() detectDevice(player) end)
+    
+    task.spawn(function()
+        local waited = 0
+        repeat
+            task.wait(0.2)
+            waited = waited + 0.2
+        until (PLAYER_DEVICES[player.UserId] and PLAYER_DEVICES[player.UserId] ~= "Unknown") or waited >= 12
+        
+        if getPlayerRank(player) > RANKS.Customer then
+            setupCmdBar(player)
+        end
+    end)
+    
+    handleMute(player)
+    
+    player.Chatted:Connect(function(msg)
+        if string.sub(msg, 1, 1) == PREFIX then
+            processCommand(player, msg)
         end
     end)
 end
 
--- FIXED: Legacy chat handler
 for _, player in ipairs(Players:GetPlayers()) do
-    player.Chatted:Connect(function(msg)
-        if string.sub(msg, 1, 1) == "," then
-            handleCommand(player, msg)
-        end
-    end)
+    task.spawn(function() onPlayerAdded(player) end)
 end
 
-Players.PlayerAdded:Connect(function(player)
-    player.Chatted:Connect(function(msg)
-        if string.sub(msg, 1, 1) == "," then
-            handleCommand(player, msg)
-        end
-    end)
+Players.PlayerAdded:Connect(onPlayerAdded)
+
+Players.PlayerRemoving:Connect(function(p)
+    LOOP_KILL[p.UserId] = nil
+    LOOP_PUNISH[p.UserId] = nil
+    PLAYER_DEVICES[p.UserId] = nil
 end)
 
--- FIXED: Load notification - wait for GUIs to be ready
-task.wait(1)
-for _, player in ipairs(Players:GetPlayers()) do
-    task.spawn(function()
-        -- Wait a bit for their GUI to be created
-        task.wait(1)
-        notify(player, "Crumbs Admin", "Tada~!! Crumbs Admin loaded successfully!! :3", 5)
-    end)
-end
-print("Crumbs Admin loaded successfully!")
+-- Add this to your remote listener
+remote.OnServerEvent:Connect(function(player, action, data)
+    if action == "Command" and data then
+        task.spawn(function() processCommand(player, data) end)
+    elseif action == "Dashboard" then
+        if getPlayerRank(player) > RANKS.Customer then
+            openDashboard(player)
+        end
+    elseif action == "Device" and data then
+        PLAYER_DEVICES[player.UserId] = data
+    elseif action == "unload" then
+        -- Client confirming unload, do nothing
+        return
+    end
+end)
+
+task.spawn(function() broadcastNotification("Crumbs Admin", "Server-side admin loaded successfully!", 5) end)
